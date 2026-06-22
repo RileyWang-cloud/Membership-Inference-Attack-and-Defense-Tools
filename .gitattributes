@@ -1,0 +1,25 @@
+# Normalize line endings: store LF in the repo, convert on checkout as needed.
+# Eliminates CRLF/LF false diffs and merge conflicts.
+* text=auto eol=lf
+
+# Binary files - never touch line endings
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.bmp  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.tar  binary
+*.npz  binary
+*.npy  binary
+*.pkl  binary
+*.pickle binary
+*.pt   binary
+*.ckpt binary
+*.h5   binary
+*.so   binary
+*.dll  binary
+*.pyd  binary

@@ -33,7 +33,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from Attack.lira import AttackInput, LiRAAttack
+from Attack.base import AttackInput
+from Attack.lira import LiRAAttack
 
 
 DATA_DIR = Path(__file__).resolve().parent / "demo_data"

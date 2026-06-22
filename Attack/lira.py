@@ -14,85 +14,15 @@ Unified convention:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch.utils.data import DataLoader, TensorDataset
 
+from Attack.base import AttackInput, AttackOutput, BaseAttack
 from Attack.utils_lira.lira_reference_utils import LiRAReferenceManager
-
-
-@dataclass
-class AttackInput:
-    target_model: Optional[Any]
-    samples: Any
-    labels: Optional[Any] = None
-    membership_labels: Optional[Any] = None
-    signals: Optional[Dict[str, Any]] = None
-    reference_data: Optional[Dict[str, Any]] = None
-    shadow_data: Optional[Dict[str, Any]] = None
-    config: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class EvaluationResult:
-    accuracy: Optional[float] = None
-    auroc: Optional[float] = None
-    tpr_at_fpr: Optional[Dict[str, float]] = None
-    extra_metrics: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class AttackOutput:
-    membership_scores: Any
-    membership_preds: Optional[Any] = None
-    evaluation: Optional[EvaluationResult] = None
-    intermediate_outputs: Optional[Dict[str, Any]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-class BaseAttack:
-    """Minimal base class shared by attack implementations."""
-
-    def fit(self, attack_input: AttackInput) -> "BaseAttack":
-        return self
-
-    def infer(self, attack_input: AttackInput) -> AttackOutput:
-        raise NotImplementedError
-
-    def evaluate(
-        self,
-        attack_output: AttackOutput,
-        attack_input: AttackInput,
-    ) -> EvaluationResult:
-        y_true = _to_numpy_1d(attack_input.membership_labels)
-        y_score = _to_numpy_1d(attack_output.membership_scores)
-
-        if attack_output.membership_preds is None:
-            y_pred = (y_score >= 0.0).astype(np.int64)
-        else:
-            y_pred = _to_numpy_1d(attack_output.membership_preds).astype(np.int64)
-
-        return EvaluationResult(
-            accuracy=float(accuracy_score(y_true, y_pred)),
-            auroc=_safe_auroc(y_true, y_score),
-            tpr_at_fpr={
-                "1%": _tpr_at_fpr(y_true, y_score, 0.01),
-                "0.1%": _tpr_at_fpr(y_true, y_score, 0.001),
-            },
-        )
-
-    def run(self, attack_input: AttackInput) -> AttackOutput:
-        self.fit(attack_input)
-        output = self.infer(attack_input)
-        if attack_input.membership_labels is not None:
-            output.evaluation = self.evaluate(output, attack_input)
-        return output
 
 
 class LiRAAttack(BaseAttack):
@@ -293,24 +223,4 @@ def _to_numpy_2d(value: Any) -> np.ndarray:
     return array
 
 
-def _safe_auroc(y_true: np.ndarray, y_score: np.ndarray) -> Optional[float]:
-    if len(np.unique(y_true)) < 2:
-        return None
-    return float(roc_auc_score(y_true, y_score))
-
-
-def _tpr_at_fpr(y_true: np.ndarray, y_score: np.ndarray, fpr_threshold: float) -> float:
-    if len(np.unique(y_true)) < 2:
-        return 0.0
-    fpr, tpr, _ = roc_curve(y_true, y_score)
-    idx = int(np.argmin(np.abs(fpr - fpr_threshold)))
-    return float(tpr[idx])
-
-
-__all__ = [
-    "AttackInput",
-    "AttackOutput",
-    "EvaluationResult",
-    "BaseAttack",
-    "LiRAAttack",
-]
+__all__ = ["LiRAAttack"]
