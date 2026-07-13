@@ -72,7 +72,19 @@ All classes subclass `BaseDefense` and consume `DefenseInput` → produce `Defen
 |---|---|---|---|
 | `DPSGDDefense` | [dp_sgd.py](Defense/dp_sgd.py) | DP-SGD for PyTorch classifiers (training-time) | [dp_sgd_demo.py](Defense/dp_sgd_demo.py) |
 | `VAEDPDefense` | [vae_dp.py](Defense/vae_dp.py) | DP-SGD-trained VAE against reconstruction MIA | [vae_dp_demo.py](Defense/vae_dp_demo.py) |
+| `RelaxLossDefense` | [relax_loss.py](Defense/relax_loss.py) | alternating loss relaxation and posterior flattening (training-time) | [relax_loss_demo.py](Defense/relax_loss_demo.py) |
+| `HAMPDefense` | [hamp.py](Defense/hamp.py) | high-entropy training and rank-preserving output modification (hybrid) | [hamp_demo.py](Defense/hamp_demo.py) |
+| `EarlyStopDefense` | [early_stop.py](Defense/early_stop.py) | validation-monitored or fixed-epoch early stopping (training-time) | [early_stop_demo.py](Defense/early_stop_demo.py) |
+| `AdvRegDefense` | [adv_reg.py](Defense/adv_reg.py) | adversarial membership regularization (training-time) | [adv_reg_demo.py](Defense/adv_reg_demo.py) |
 | `PopularityRandomizationDefense`, `RecommendationListShuffleDefense` | [rec_privacy_defenses.py](Defense/rec_privacy_defenses.py) | recommender output-processing | [rec_privacy_defense_demo.py](Defense/rec_privacy_defense_demo.py) |
+
+The four classifier defenses above accept PyTorch models returning a logits
+tensor, a tuple whose first item is logits, or a mapping with a `logits` item.
+`AdvRegDefense` additionally requires a disjoint pseudo-non-member set in
+`auxiliary_data`; `HAMPDefense` accepts a dataset-specific random non-member
+generator there. `EarlyStopDefense` uses validation monitoring by default and
+supports the fixed-checkpoint protocol from the reference evaluation through
+`defense_config={"stop_epoch": ...}`.
 
 ## Quick start
 
@@ -84,6 +96,10 @@ python Attack/gan_leaks_demo.py
 python Attack/enhanced_mia_demo.py
 python Attack/shadow_free_mia_demo.py
 python Defense/vae_dp_demo.py
+python Defense/relax_loss_demo.py
+python Defense/hamp_demo.py
+python Defense/early_stop_demo.py
+python Defense/adv_reg_demo.py
 ```
 
 Dependencies: PyTorch, scikit-learn, NumPy. The metric-based and shadow-free demos are NumPy-only.
