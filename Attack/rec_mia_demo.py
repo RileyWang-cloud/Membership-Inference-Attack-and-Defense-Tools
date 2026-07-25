@@ -5,8 +5,9 @@ This script builds synthetic attack inputs and runs:
 1. ME-MIA
 2. Biased-MIA
 3. DL-MIA
+4. COMPARE
 
-The goal is to demonstrate how all three methods are called through the
+The goal is to demonstrate how all four methods are called through the
 project's unified `AttackInput -> AttackOutput` interface.
 
 Run examples
@@ -15,6 +16,7 @@ python Attack/rec_mia_demo.py
 python Attack/rec_mia_demo.py --method me
 python Attack/rec_mia_demo.py --method biased
 python Attack/rec_mia_demo.py --method dl
+python Attack/rec_mia_demo.py --method compare
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Attack.biased_mia import BiasedMIAAttack
+from Attack.compare_mia import CompareMIAAttack
 from Attack.dl_mia import DLMIAAttack
 from Attack.me_mia import MEMIAAttack
 from Attack.shadow_based import AttackInput
@@ -125,6 +128,16 @@ def build_dl_features(num_users: int, member: bool) -> Dict[str, np.ndarray]:
         "semantic": np.random.normal(semantic_mean, 0.35, size=(num_users, 50)).astype(np.float32),
         "syntax": np.random.normal(syntax_mean, 0.5, size=(num_users, 50)).astype(np.float32),
     }
+
+
+def build_compare_features(num_users: int, member: bool) -> np.ndarray:
+    """Build synthetic COMPARE 12D features: target NDCG plus 11 discrepancies."""
+    target_mean = 0.72 if member else 0.45
+    diff_mean = 0.16 if member else -0.03
+    target_ndcg = np.random.normal(target_mean, 0.06, size=(num_users, 1))
+    discrepancies = np.random.normal(diff_mean, 0.05, size=(num_users, 11))
+    features = np.concatenate([target_ndcg, discrepancies], axis=1)
+    return np.clip(features, -1.0, 1.0).astype(np.float32)
 
 
 def print_summary(name: str, output) -> None:
@@ -281,13 +294,43 @@ def run_dl_mia_demo() -> None:
     print_summary("DL-MIA Demo", output)
 
 
+def run_compare_mia_demo() -> None:
+    shadow_member_features = build_compare_features(96, member=True)
+    shadow_nonmember_features = build_compare_features(96, member=False)
+    target_member_features = build_compare_features(40, member=True)
+    target_nonmember_features = build_compare_features(40, member=False)
+
+    attack = CompareMIAAttack(classifier="logistic_regression")
+    attack_input = AttackInput(
+        target_model=None,
+        samples={
+            "member_features": target_member_features,
+            "nonmember_features": target_nonmember_features,
+        },
+        membership_labels=np.concatenate(
+            [
+                np.ones(len(target_member_features), dtype=np.int64),
+                np.zeros(len(target_nonmember_features), dtype=np.int64),
+            ],
+            axis=0,
+        ),
+        shadow_data={
+            "member_features": shadow_member_features,
+            "nonmember_features": shadow_nonmember_features,
+        },
+    )
+
+    output = attack.run(attack_input)
+    print_summary("COMPARE Demo", output)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Unified recommender MIA demo")
     parser.add_argument(
         "--method",
         type=str,
         default="all",
-        choices=["all", "me", "biased", "dl"],
+        choices=["all", "me", "biased", "dl", "compare"],
         help="Which attack demo to run",
     )
     args = parser.parse_args()
@@ -300,6 +343,8 @@ def main() -> None:
         run_biased_mia_demo()
     if args.method in ("all", "dl"):
         run_dl_mia_demo()
+    if args.method in ("all", "compare"):
+        run_compare_mia_demo()
 
 
 if __name__ == "__main__":
