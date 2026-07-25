@@ -460,4 +460,69 @@ python Attack/rec_mia_demo.py
 python Attack/rec_mia_demo.py --method me
 python Attack/rec_mia_demo.py --method biased
 python Attack/rec_mia_demo.py --method dl
+python Attack/rec_mia_demo.py --method compare
+```
+
+---
+
+## 10. COMPARE
+
+`COMPARE` is the proposed recommender-system MIA method. Its unified adapter is
+implemented natively in this repository:
+
+- [compare_mia.py](./compare_mia.py)
+
+The method trains an attack classifier on shadow-side COMPARE features and
+infers target-user membership from target-side COMPARE features.
+
+Default feature definition:
+
+```text
+target_ndcg_10
+ndcg_diff_alpha_i = target_ndcg_10 - surrogate_ndcg_10_alpha_i
+alpha_i in {0.0, 0.1, ..., 1.0}
+```
+
+With 11 alpha values, the default feature vector is 12-dimensional.
+
+Minimal usage with precomputed features:
+
+```python
+from Attack.compare_mia import CompareMIAAttack
+from Attack.shadow_based import AttackInput
+
+attack = CompareMIAAttack()
+
+attack_input = AttackInput(
+    target_model=None,
+    samples={
+        "member_features": target_member_compare_features,
+        "nonmember_features": target_nonmember_compare_features,
+    },
+    membership_labels=[1] * num_target_member + [0] * num_target_nonmember,
+    shadow_data={
+        "member_features": shadow_member_compare_features,
+        "nonmember_features": shadow_nonmember_compare_features,
+    },
+)
+
+output = attack.run(attack_input)
+```
+
+Minimal usage with raw COMPARE metric rows:
+
+```python
+attack_input = AttackInput(
+    target_model=None,
+    samples={
+        "member_metrics": target_member_rows,
+        "nonmember_metrics": target_nonmember_rows,
+        "alpha_values": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    },
+    shadow_data={
+        "member_metrics": shadow_member_rows,
+        "nonmember_metrics": shadow_nonmember_rows,
+        "alpha_values": [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    },
+)
 ```
