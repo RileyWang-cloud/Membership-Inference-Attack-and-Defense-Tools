@@ -102,8 +102,8 @@ def get_FLAGS(flag_path):
     flags.DEFINE_integer('num_workers', 4, help='workers of Dataloader')
     flags.DEFINE_float('ema_decay', 0.9999, help="ema decay rate")
     flags.DEFINE_bool('parallel', True, help='multi gpu training')
-    
-    
+
+
     flags.DEFINE_bool('use_predefined_M', False, help='Use predefined encoding matrix M')
     flags.DEFINE_string('M_path', './logs/ETDM_CIFAR10/M.pt', help='Path to load predefined M')  # 预定义编码矩阵M
 
@@ -127,7 +127,7 @@ def get_FLAGS(flag_path):
     flags.DEFINE_float('sparsity', '0.3', help='Sparsity of mask matrix')
     flags.DEFINE_string('model_type', 'ddpm', help='Type of the target model')
     flags.DEFINE_string('ckpt_name', 'ckpt-step8000', help='Name of the model file')
-    
+
     #gsa
     flags.DEFINE_string('output_name', '', help="The directory that save the gradient information.")
     flags.DEFINE_integer('sampling_frequency', 10, help="sampling frequency")
@@ -163,6 +163,39 @@ def get_model(ckpt, FLAGS, WA=True):
     model.eval()
 
     return model
+
+
+def get_model_selective(ckpt_path, FLAGS):
+    """Load an ADF/SMCD checkpoint as a regular ``model(images, timesteps)`` denoiser."""
+    from Defense.adf_diffusion import SelectiveDenoiser
+    checkpoint = torch.load(ckpt_path, map_location=torch.device(device))
+    state = checkpoint["ema_model"] if "ema_model" in checkpoint else checkpoint["trainer"]
+    state = {key[7:] if key.startswith("module.") else key: value for key, value in state.items()}
+    mask = state.get("M")
+    if mask is None:
+        raise ValueError("Invalid SMCD checkpoint: missing trainer mask M.")
+    t_to_group = state.get("t_to_group")
+    if t_to_group is None:
+        t_to_group = torch.tensor(generate_t_to_group(int(mask.shape[1]), int(FLAGS.num_t_groups)))
+    group_count = max(int(key.split(".")[1]) for key in state if key.startswith("models.")) + 1
+    models = [UNet(T=int(mask.shape[1]), ch=FLAGS.ch, ch_mult=FLAGS.ch_mult, attn=FLAGS.attn,
+                   num_res_blocks=FLAGS.num_res_blocks, dropout=FLAGS.dropout) for _ in range(group_count)]
+    model = SelectiveDenoiser(models, t_to_group.tolist(), mask)
+    model.load_state_dict({key: value for key, value in state.items() if key in model.state_dict()}, strict=False)
+    return model.eval()
+
+
+def calculate_fid(model, FLAGS, num_images=100, batch_size=None, fid_cache=None,
+                  use_torch=False, verbose=True, device=None):
+    """Generate DDPM samples from ``model`` and return their FID."""
+    try:
+        from .fid_evaluation import calculate_model_fid
+    except ImportError:  # Support invoking this legacy utility as a script.
+        from fid_evaluation import calculate_model_fid
+    return calculate_model_fid(
+        model, FLAGS, num_images=num_images, batch_size=batch_size,
+        fid_cache=fid_cache, use_torch=use_torch, verbose=verbose, device=device,
+    )
 
 def get_dataset(dataset_root, dataset, batch_size):
     # load splits
@@ -370,8 +403,3 @@ if __name__ == '__main__':
         ddpm_num_steps=FLAGS.T,
         membership="nonmem",
     )
-
-    
-
-
-    

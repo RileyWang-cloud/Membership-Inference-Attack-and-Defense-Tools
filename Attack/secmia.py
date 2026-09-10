@@ -102,6 +102,7 @@ def _coerce_flag_value(key: str, raw: str) -> Any:
 def _parse_flagfile(flag_path: Optional[str], overrides: Dict[str, Any]) -> SimpleNamespace:
     values = _load_flagfile_defaults()
     if flag_path and os.path.exists(flag_path):
+        repeated_list_keys: set[str] = set()
         with open(flag_path, "r", encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
@@ -112,7 +113,15 @@ def _parse_flagfile(flag_path: Optional[str], overrides: Dict[str, Any]) -> Simp
                     key, raw = body.split("=", 1)
                 else:
                     key, raw = body, "true"
-                values[key] = _coerce_flag_value(key, raw)
+                parsed = _coerce_flag_value(key, raw)
+                # absl DEFINE_multi_integer accepts repeated --ch_mult lines.
+                if key in {"ch_mult", "attn"}:
+                    if key not in repeated_list_keys:
+                        values[key] = []
+                        repeated_list_keys.add(key)
+                    values[key].extend(parsed)
+                else:
+                    values[key] = parsed
     values.update({k: v for k, v in overrides.items() if v is not None})
     return SimpleNamespace(**values)
 
@@ -174,6 +183,11 @@ class SecMIAAttack(BaseAttack):
         sparsity: float = 0.3,
         output_save_dir: str = "./experiment_results/recent",
         nns_train_portion: float = 0.2,
+        compute_fid: bool = False,
+        fid_num_images: int = 100,
+        fid_batch_size: Optional[int] = None,
+        fid_cache: Optional[str] = None,
+        fid_use_torch: bool = False,
         device: Optional[str] = None,
     ) -> None:
         self.attack_variant = attack_variant
@@ -186,6 +200,11 @@ class SecMIAAttack(BaseAttack):
         self.sparsity = sparsity
         self.output_save_dir = output_save_dir
         self.nns_train_portion = nns_train_portion
+        self.compute_fid = compute_fid
+        self.fid_num_images = fid_num_images
+        self.fid_batch_size = fid_batch_size
+        self.fid_cache = fid_cache
+        self.fid_use_torch = fid_use_torch
         self.device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
 
         self.runtime_config: Dict[str, Any] = {}
@@ -221,6 +240,9 @@ class SecMIAAttack(BaseAttack):
                 "t_sec": self.runtime_config["t_sec"],
                 "m": self.runtime_config["m"],
             }
+            fid = self._maybe_compute_fid(attack_input)
+            if fid is not None:
+                metadata["fid"] = fid
             return AttackOutput(
                 membership_scores=scores,
                 membership_preds=None,
@@ -244,6 +266,9 @@ class SecMIAAttack(BaseAttack):
                 "t_sec": self.runtime_config["t_sec"],
                 "m": self.runtime_config["m"],
             }
+            fid = self._maybe_compute_fid(attack_input)
+            if fid is not None:
+                metadata["fid"] = fid
             return AttackOutput(
                 membership_scores=scores,
                 membership_preds=preds,
@@ -292,9 +317,33 @@ class SecMIAAttack(BaseAttack):
             "sparsity": self.sparsity,
             "output_save_dir": self.output_save_dir,
             "nns_train_portion": self.nns_train_portion,
+            "compute_fid": self.compute_fid,
+            "fid_num_images": self.fid_num_images,
+            "fid_batch_size": self.fid_batch_size,
+            "fid_cache": self.fid_cache,
+            "fid_use_torch": self.fid_use_torch,
         }
         merged.update(config)
         return merged
+
+    def _maybe_compute_fid(self, attack_input: AttackInput) -> Optional[float]:
+        """Compute optional generation-quality FID for the attacked DDPM."""
+        if not bool(self.runtime_config.get("compute_fid", False)):
+            return None
+        if str(self.runtime_config.get("model_type", self.model_type)).lower() not in {"ddpm", "smcd"}:
+            raise ValueError("FID evaluation supports model_type='ddpm' and 'smcd' only.")
+        model = self._load_model_from_config(
+            attack_input.target_model, self.runtime_config, attack_input.metadata,
+        )
+        flags_obj = self._resolve_flags(self.runtime_config, attack_input.metadata)
+        return float(_SECMI_UTILS.calculate_fid(
+            model, flags_obj,
+            num_images=int(self.runtime_config["fid_num_images"]),
+            batch_size=self.runtime_config.get("fid_batch_size"),
+            fid_cache=self.runtime_config.get("fid_cache"),
+            use_torch=bool(self.runtime_config.get("fid_use_torch", False)),
+            device=self.device,
+        ))
 
     def _infer_stat_scores(self, attack_input: AttackInput) -> Tuple[np.ndarray, Dict[str, Any]]:
         signals = attack_input.signals or {}
