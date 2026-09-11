@@ -159,6 +159,7 @@ class GSAMIAAttack(BaseAttack):
         output_name: str = "./gradient_mia/interface",
         xgb_n_estimators: int = 200,
         use_cached_features: bool = True,
+        timestep_chunk_size: int = 1,
         compute_fid: bool = False,
         fid_num_images: int = 100,
         fid_batch_size: Optional[int] = None,
@@ -174,6 +175,7 @@ class GSAMIAAttack(BaseAttack):
         self.output_name = output_name
         self.xgb_n_estimators = xgb_n_estimators
         self.use_cached_features = use_cached_features
+        self.timestep_chunk_size = timestep_chunk_size
         self.compute_fid = compute_fid
         self.fid_num_images = fid_num_images
         self.fid_batch_size = fid_batch_size
@@ -242,6 +244,7 @@ class GSAMIAAttack(BaseAttack):
             "output_name": self.output_name,
             "xgb_n_estimators": self.xgb_n_estimators,
             "use_cached_features": self.use_cached_features,
+            "timestep_chunk_size": self.timestep_chunk_size,
             "compute_fid": self.compute_fid,
             "fid_num_images": self.fid_num_images,
             "fid_batch_size": self.fid_batch_size,
@@ -268,6 +271,7 @@ class GSAMIAAttack(BaseAttack):
             fid_cache=self.runtime_config.get("fid_cache"),
             use_torch=bool(self.runtime_config.get("fid_use_torch", False)),
             device=self.device,
+            timestep_chunk_size=int(self.runtime_config["timestep_chunk_size"]),
         )
         return {"fid": float(fid)}
 

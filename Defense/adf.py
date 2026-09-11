@@ -212,12 +212,18 @@ class ADFDefense(BaseDefense):
         if config.get("gsamia_shadow_model") is not None:
             from Attack.gsamia import AttackInput as GsaInput, GSAMIAAttack
             shadow = config["gsamia_shadow_model"]
-            gsa = GSAMIAAttack(model_type="smcd", batch_size=int(config.get("gsamia_batch_size", 16)),
-                use_cached_features=False)
-            gsa_labels = torch.cat([torch.ones(len(member_loader), dtype=torch.long),
-                                    torch.zeros(len(nonmember_loader), dtype=torch.long)]).numpy()
+            gsa_batch_size = int(config.get("gsamia_batch_size", 1))
+            gsa_member_loader = torch.utils.data.DataLoader(members, batch_size=gsa_batch_size, shuffle=False)
+            gsa_nonmember_loader = torch.utils.data.DataLoader(nonmembers, batch_size=gsa_batch_size, shuffle=False)
+            gsa = GSAMIAAttack(model_type="smcd", batch_size=gsa_batch_size,
+                sampling_frequency=int(config.get("gsamia_sampling_frequency", 5)),
+                timestep_chunk_size=int(config.get("gsamia_timestep_chunk_size", 1)), use_cached_features=False)
+            gsa_labels = torch.cat([torch.ones(len(gsa_member_loader), dtype=torch.long),
+                                    torch.zeros(len(gsa_nonmember_loader), dtype=torch.long)]).numpy()
             output = gsa.run(GsaInput(target_model=model, samples=None, membership_labels=gsa_labels,
-                shadow_data={"shadow_model": shadow, "member_samples": member_loader, "nonmember_samples": nonmember_loader}, config={**common, "output_name": str(Path(self.config["save_dir"]) / "gsamia_features"), "use_cached_features": False}))
+                shadow_data={"shadow_model": shadow, "member_samples": gsa_member_loader, "nonmember_samples": gsa_nonmember_loader}, config={**common, "batch_size": gsa_batch_size, "output_name": str(Path(self.config["save_dir"]) / "gsamia_features"), "use_cached_features": False,
+                "sampling_frequency": int(config.get("gsamia_sampling_frequency", 5)),
+                "timestep_chunk_size": int(config.get("gsamia_timestep_chunk_size", 1))}))
             results["gsamia"] = _attack_metrics(output.evaluation)
         else:
             results["gsamia"] = {"status": "skipped", "reason": "eval_config.gsamia_shadow_model is required"}

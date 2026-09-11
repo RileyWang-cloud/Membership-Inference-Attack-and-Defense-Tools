@@ -217,6 +217,7 @@ def extract_attack_features(
     ddpm_num_steps=1000,
     membership="mem",
     device="cuda" if torch.cuda.is_available() else "cpu",
+    timestep_chunk_size=1,
 ):
     model.to(device)
     model.eval()
@@ -238,6 +239,52 @@ def extract_attack_features(
 
     for batch in tqdm.tqdm(dataloader, desc="Extracting Gradients"):
         clean_images = batch[0].to(device)
+        if attack_method == 1:
+            # The original implementation repeated the complete batch for all
+            # timesteps and retained one very large graph.  Process timestep
+            # chunks sequentially instead; this is mathematically equivalent
+            # to the averaged loss but keeps peak GPU memory bounded.
+            timestep_base = torch.tensor(
+                [x - 1 for x in range(
+                    ddpm_num_steps // sampling_frequency,
+                    ddpm_num_steps + 1,
+                    ddpm_num_steps // sampling_frequency,
+                )], device=device,
+            ).long()
+            if timestep_chunk_size < 1:
+                raise ValueError("timestep_chunk_size must be positive.")
+            model.zero_grad()
+            for start in range(0, len(timestep_base), timestep_chunk_size):
+                timestep_chunk = timestep_base[start:start + timestep_chunk_size]
+                chunk_size = len(timestep_chunk)
+                images_block = clean_images.repeat(chunk_size, 1, 1, 1)
+                timesteps_block = timestep_chunk.repeat_interleave(clean_images.shape[0])
+                noise_block = torch.randn_like(images_block)
+                noisy_block = noise_scheduler.add_noise(images_block, noise_block, timesteps_block)
+                model_output_block = model(noisy_block, timesteps_block)
+                if prediction_type == "epsilon":
+                    block_loss = F.mse_loss(model_output_block, noise_block)
+                elif prediction_type == "sample":
+                    alpha_t = _extract_into_tensor(
+                        noise_scheduler.alphas_cumprod, timesteps_block,
+                        (images_block.shape[0], 1, 1, 1),
+                    )
+                    block_loss = (alpha_t / (1 - alpha_t) * F.mse_loss(
+                        model_output_block, images_block, reduction="none"
+                    )).mean()
+                else:
+                    raise ValueError(f"Unsupported prediction type: {prediction_type}")
+                (block_loss * chunk_size / len(timestep_base)).backward()
+                del model_output_block, noisy_block, noise_block, images_block
+                torch.cuda.empty_cache()
+            grad_l2 = torch.cat([
+                torch.norm(p.grad.detach()).unsqueeze(0)
+                for p in model.parameters() if p.grad is not None
+            ])
+            all_samples_grads.append(grad_l2.unsqueeze(0))
+            model.zero_grad()
+            torch.cuda.empty_cache()
+            continue
         clean_images = clean_images.repeat(sampling_frequency, 1, 1, 1)
 
         noise = torch.randn_like(clean_images)

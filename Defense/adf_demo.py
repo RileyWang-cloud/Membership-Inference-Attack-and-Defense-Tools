@@ -37,7 +37,12 @@ SPARSITY = 0.5
 STAGE1_STEPS = 1
 COMPUTE_FID = True
 FID_NUM_IMAGES = 2000
+FID_BATCH_SIZE = 4
 RUN_ATTACKS = True
+SECMIA_BATCH_SIZE = 16
+GSAMIA_BATCH_SIZE = 1
+GSAMIA_SAMPLING_FREQUENCY = 5
+GSAMIA_TIMESTEP_CHUNK_SIZE = 1
 # Black-box threat model: the attacker does not know ADF and trains a plain DDPM
 # shadow model, exactly as in Attack/gsamia_demo.py.
 SHADOW_MODEL_DIR = REPO_ROOT / "Attack" / "utils_gsamia" / "logs" / "DDPM_CIFAR10"
@@ -79,9 +84,14 @@ def main() -> None:
         },
         eval_config={
             "compute_fid": COMPUTE_FID, "fid_num_images": FID_NUM_IMAGES,
+            "fid_batch_size": FID_BATCH_SIZE,
             "fid_cache": str(REPO_ROOT / "Attack" / "utils_secmia" / "stats" / "cifar10.train.npz"),
             "run_attacks": RUN_ATTACKS, "data_root": str(DATA_ROOT), "dataset": DATASET,
+            "attack_batch_size": SECMIA_BATCH_SIZE,
             "model_type": "smcd", "gsamia_shadow_model": shadow_model,
+            "gsamia_batch_size": GSAMIA_BATCH_SIZE,
+            "gsamia_sampling_frequency": GSAMIA_SAMPLING_FREQUENCY,
+            "gsamia_timestep_chunk_size": GSAMIA_TIMESTEP_CHUNK_SIZE,
         },
     ))
     print("ADF defense finished.")
