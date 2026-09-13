@@ -51,7 +51,7 @@ USE_CACHED_FEATURES = True
 # FID measures target-model generation quality, independently of MIA quality.
 # 100 images is a quick smoke test; use at least 10,000 for a final report.
 COMPUTE_FID = True
-FID_NUM_IMAGES = 100
+FID_NUM_IMAGES = 2000
 FID_BATCH_SIZE = 16
 FID_CACHE = str(UTILS_GSAMIA_DIR / "stats" / "cifar10.train.npz")
 FID_USE_TORCH = False
