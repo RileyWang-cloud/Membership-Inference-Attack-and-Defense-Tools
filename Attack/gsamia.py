@@ -271,7 +271,7 @@ class GSAMIAAttack(BaseAttack):
             fid_cache=self.runtime_config.get("fid_cache"),
             use_torch=bool(self.runtime_config.get("fid_use_torch", False)),
             device=self.device,
-            timestep_chunk_size=int(self.runtime_config["timestep_chunk_size"]),
+            # timestep_chunk_size=int(self.runtime_config["timestep_chunk_size"]),
         )
         return {"fid": float(fid)}
 
