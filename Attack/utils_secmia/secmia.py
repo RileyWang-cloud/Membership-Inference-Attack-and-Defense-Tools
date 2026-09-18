@@ -313,6 +313,43 @@ def get_model(ckpt, FLAGS, WA=True):
     return model
 
 
+def get_model_selective(ckpt_path, FLAGS):
+    """Load an ADF/SMCD checkpoint as a regular ``model(images, timesteps)`` denoiser."""
+    from Defense.adf_diffusion import SelectiveDenoiser
+    checkpoint = torch.load(ckpt_path, map_location=torch.device(device))
+    state = checkpoint["ema_model"] if "ema_model" in checkpoint else checkpoint["trainer"]
+    state = {key[7:] if key.startswith("module.") else key: value for key, value in state.items()}
+    mask = state.get("M")
+    if mask is None:
+        raise ValueError("Invalid SMCD checkpoint: missing trainer mask M.")
+    t_to_group = state.get("t_to_group")
+    if t_to_group is None:
+        t_to_group = torch.tensor(generate_t_to_group(int(mask.shape[1]), int(FLAGS.num_t_groups)))
+    group_count = max(int(key.split(".")[1]) for key in state if key.startswith("models.")) + 1
+    models = [UNet(T=int(mask.shape[1]), ch=FLAGS.ch, ch_mult=FLAGS.ch_mult, attn=FLAGS.attn,
+                   num_res_blocks=FLAGS.num_res_blocks, dropout=FLAGS.dropout) for _ in range(group_count)]
+    model = SelectiveDenoiser(models, t_to_group.tolist(), mask)
+    model.load_state_dict({key: value for key, value in state.items() if key in model.state_dict()}, strict=False)
+    return model.eval()
+
+
+def calculate_fid(model, FLAGS, num_images=100, batch_size=None, fid_cache=None,
+                  use_torch=False, verbose=True, device=None):
+    """Generate DDPM samples from ``model`` and return their FID.
+
+    The statistics cache defaults to this utility's CIFAR-10 training cache.
+    ``num_images`` should be large (for example 10,000+) for a final result.
+    """
+    try:
+        from .fid_evaluation import calculate_model_fid
+    except ImportError:  # Support invoking this legacy utility as a script.
+        from fid_evaluation import calculate_model_fid
+    return calculate_model_fid(
+        model, FLAGS, num_images=num_images, batch_size=batch_size,
+        fid_cache=fid_cache, use_torch=use_torch, verbose=verbose, device=device,
+    )
+
+
 def extract(v, t, x_shape):
     """
     Extract some coefficients at specified timesteps, then reshape to

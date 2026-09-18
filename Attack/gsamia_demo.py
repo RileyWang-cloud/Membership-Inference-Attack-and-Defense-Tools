@@ -48,6 +48,13 @@ NUM_T_GROUPS = 5
 SPARSITY = 0.3
 XGB_N_ESTIMATORS = 200
 USE_CACHED_FEATURES = True
+# FID measures target-model generation quality, independently of MIA quality.
+# 100 images is a quick smoke test; use at least 10,000 for a final report.
+COMPUTE_FID = True
+FID_NUM_IMAGES = 2000
+FID_BATCH_SIZE = 16
+FID_CACHE = str(UTILS_GSAMIA_DIR / "stats" / "cifar10.train.npz")
+FID_USE_TORCH = False
 
 TARGET_OUTPUT_NAME = str(UTILS_GSAMIA_DIR / "gradient_mia" / "GSA1" / "target_feature_DDPM")
 SHADOW_OUTPUT_NAME = str(UTILS_GSAMIA_DIR / "gradient_mia" / "GSA1" / "shadow_feature_DDPM")
@@ -126,6 +133,11 @@ def main() -> None:
             "xgb_n_estimators": XGB_N_ESTIMATORS,
             "use_cached_features": USE_CACHED_FEATURES,
             "output_name": TARGET_OUTPUT_NAME,
+            "compute_fid": COMPUTE_FID,
+            "fid_num_images": FID_NUM_IMAGES,
+            "fid_batch_size": FID_BATCH_SIZE,
+            "fid_cache": FID_CACHE,
+            "fid_use_torch": FID_USE_TORCH,
         },
         metadata={
             "model_dir": MODEL_DIR,
@@ -144,6 +156,11 @@ def main() -> None:
         output_name=TARGET_OUTPUT_NAME,
         xgb_n_estimators=XGB_N_ESTIMATORS,
         use_cached_features=USE_CACHED_FEATURES,
+        compute_fid=COMPUTE_FID,
+        fid_num_images=FID_NUM_IMAGES,
+        fid_batch_size=FID_BATCH_SIZE,
+        fid_cache=FID_CACHE,
+        fid_use_torch=FID_USE_TORCH,
     )
     output = attack.run(attack_input)
 
@@ -156,6 +173,8 @@ def main() -> None:
     print(f"Attack method: {ATTACK_METHOD}")
     print(f"Sampling frequency: {SAMPLING_FREQUENCY}")
     print(f"Use cached features: {USE_CACHED_FEATURES}")
+    if "fid" in output.metadata:
+        print(f"FID ({FID_NUM_IMAGES} generated images): {output.metadata['fid']:.4f}")
     print(f"Total attacked samples: {len(membership_labels)}")
     print(f"Scores shape: {np.asarray(output.membership_scores).shape}")
     if output.evaluation is not None:

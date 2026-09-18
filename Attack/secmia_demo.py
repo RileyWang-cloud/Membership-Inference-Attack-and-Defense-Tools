@@ -45,6 +45,13 @@ K = 3
 NUM_T_GROUPS = 5
 SPARSITY = 0.3
 NNS_TRAIN_PORTION = 0.2
+# FID measures target-model generation quality, independently of MIA quality.
+# 100 images is a quick smoke test; use at least 10,000 for a final report.
+COMPUTE_FID = True
+FID_NUM_IMAGES = 2000
+FID_BATCH_SIZE = 32
+FID_CACHE = str(UTILS_SECMIA_DIR / "stats" / "cifar10.train.npz")
+FID_USE_TORCH = False
 
 
 def build_membership_labels(data_root: str, dataset: str, batch_size: int) -> np.ndarray:
@@ -90,6 +97,11 @@ def main() -> None:
             "num_t_groups": NUM_T_GROUPS,
             "sparsity": SPARSITY,
             "nns_train_portion": NNS_TRAIN_PORTION,
+            "compute_fid": COMPUTE_FID,
+            "fid_num_images": FID_NUM_IMAGES,
+            "fid_batch_size": FID_BATCH_SIZE,
+            "fid_cache": FID_CACHE,
+            "fid_use_torch": FID_USE_TORCH,
         },
         metadata={
             "model_dir": MODEL_DIR,
@@ -109,6 +121,11 @@ def main() -> None:
         sparsity=SPARSITY,
         output_save_dir=OUTPUT_SAVE_DIR,
         nns_train_portion=NNS_TRAIN_PORTION,
+        compute_fid=COMPUTE_FID,
+        fid_num_images=FID_NUM_IMAGES,
+        fid_batch_size=FID_BATCH_SIZE,
+        fid_cache=FID_CACHE,
+        fid_use_torch=FID_USE_TORCH,
     )
     output = attack.run(attack_input)
 
@@ -118,6 +135,8 @@ def main() -> None:
     print(f"Data root: {DATA_ROOT}")
     print(f"Dataset: {DATASET}")
     print(f"Attack variant: {ATTACK_VARIANT}")
+    if "fid" in output.metadata:
+        print(f"FID ({FID_NUM_IMAGES} generated images): {output.metadata['fid']:.4f}")
     print(f"Total attacked samples: {len(membership_labels)}")
     print(f"Scores shape: {np.asarray(output.membership_scores).shape}")
     if output.evaluation is not None:
