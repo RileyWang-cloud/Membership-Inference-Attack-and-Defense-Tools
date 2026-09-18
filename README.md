@@ -71,6 +71,7 @@ All classes subclass `BaseDefense` and consume `DefenseInput` → produce `Defen
 | Class | File | Family | Demo |
 |---|---|---|---|
 | `DPSGDDefense` | [dp_sgd.py](Defense/dp_sgd.py) | DP-SGD for PyTorch classifiers (training-time) | [dp_sgd_demo.py](Defense/dp_sgd_demo.py) |
+| `LabelSmoothingDefense` | [label_smoothing.py](Defense/label_smoothing.py) | training-time label smoothing regularization for classifiers | [label_smoothing_demo.py](Defense/label_smoothing_demo.py) |
 | `VAEDPDefense` | [vae_dp.py](Defense/vae_dp.py) | DP-SGD-trained VAE against reconstruction MIA | [vae_dp_demo.py](Defense/vae_dp_demo.py) |
 | `PopularityRandomizationDefense`, `RecommendationListShuffleDefense` | [rec_privacy_defenses.py](Defense/rec_privacy_defenses.py) | recommender output-processing | [rec_privacy_defense_demo.py](Defense/rec_privacy_defense_demo.py) |
 
