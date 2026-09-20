@@ -555,8 +555,10 @@ def _tpr_at_fpr(y_true: np.ndarray, y_score: np.ndarray, fpr_threshold: float) -
     if len(np.unique(y_true)) < 2:
         return 0.0
     fpr, tpr, _ = roc_curve(y_true, y_score)
-    idx = int(np.argmin(np.abs(fpr - fpr_threshold)))
-    return float(tpr[idx])
+    within_budget = fpr <= fpr_threshold
+    if not within_budget.any():
+        return 0.0
+    return float(tpr[within_budget].max())
 
 
 __all__ = [

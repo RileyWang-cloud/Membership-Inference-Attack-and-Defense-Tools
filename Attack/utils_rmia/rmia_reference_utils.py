@@ -85,10 +85,15 @@ class RMIAReferenceManager:
         data_sizes: List[int],
         random_seed_num: int = 5,
         reference_model_number: int = 10,
+        ensure_full_coverage: bool = True,
+        min_reference_observations: int = 2,
+        required_indices: Optional[np.ndarray] = None,
     ) -> None:
         """Train reference models and collect in/out predictions."""
         if reference_model_number < 2:
             raise ValueError("reference_model_number must be at least 2.")
+        if min_reference_observations < 1:
+            raise ValueError("min_reference_observations must be at least 1.")
 
         for data_size in data_sizes:
             for seed_offset in range(random_seed_num):
@@ -123,6 +128,60 @@ class RMIAReferenceManager:
 
                     self._train_and_record(x_a, y_a, x_b, idx_a, idx_b)
                     self._train_and_record(x_b, y_b, x_a, idx_b, idx_a)
+
+        if ensure_full_coverage:
+            self._ensure_reference_coverage(
+                required_indices=required_indices,
+                min_reference_observations=min_reference_observations,
+            )
+
+    def _ensure_reference_coverage(
+        self,
+        required_indices: Optional[np.ndarray],
+        min_reference_observations: int,
+    ) -> None:
+        """Train reciprocal full-universe pairs to close reference gaps."""
+        if self.total_samples < 2:
+            raise ValueError("At least two reference samples are required.")
+
+        if required_indices is None:
+            required = np.arange(self.total_samples, dtype=np.int64)
+        else:
+            required = np.unique(np.asarray(required_indices, dtype=np.int64))
+        if required.size == 0:
+            return
+        if required.min() < 0 or required.max() >= self.total_samples:
+            raise IndexError("required_indices contains an out-of-range sample index.")
+
+        merged_X = np.concatenate([self.train_X, self.test_X], axis=0)
+        merged_y = np.concatenate([self.train_y, self.test_y], axis=0)
+        merged_indices = np.arange(self.total_samples, dtype=np.int64)
+        self.reference_predictions.sample_labels[:] = merged_y
+
+        coverage_round = 0
+        while True:
+            min_in = min(
+                len(self.reference_predictions.in_model_predictions.get(int(i), []))
+                for i in required
+            )
+            min_out = min(
+                len(self.reference_predictions.out_model_predictions.get(int(i), []))
+                for i in required
+            )
+            if min_in >= min_reference_observations and min_out >= min_reference_observations:
+                return
+
+            split_seed = 1_000_003 + coverage_round
+            x_a, x_b, y_a, y_b, idx_a, idx_b = train_test_split(
+                merged_X,
+                merged_y,
+                merged_indices,
+                test_size=0.5,
+                random_state=split_seed,
+            )
+            self._train_and_record(x_a, y_a, x_b, idx_a, idx_b)
+            self._train_and_record(x_b, y_b, x_a, idx_b, idx_a)
+            coverage_round += 1
 
     def get_sample_predictions(self, sample_indices: np.ndarray) -> Dict[str, np.ndarray]:
         """Gather per-sample in/out true-label confidences."""
@@ -171,6 +230,7 @@ class RMIAReferenceManager:
         a: float = 0.0,
         gamma: float = 1.0,
         return_details: bool = False,
+        comparison_chunk_size: int = 1024,
     ) -> np.ndarray | Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """
         Compute RMIA scores.
@@ -228,9 +288,15 @@ class RMIAReferenceManager:
 
         scores = np.zeros(len(sample_indices), dtype=np.float64)
         if np.any(valid_target_mask) and np.any(valid_population_mask):
-            ratio_ratios = ratio_x[valid_target_mask][:, None] / (ratio_z[valid_population_mask][None, :] + 1e-10)
-            counts = np.sum(ratio_ratios > gamma, axis=1)
-            scores[valid_target_mask] = counts / int(np.sum(valid_population_mask))
+            valid_ratio_x = ratio_x[valid_target_mask]
+            valid_ratio_z = ratio_z[valid_population_mask]
+            counts = _count_ratio_exceedances(
+                ratio_x=valid_ratio_x,
+                ratio_z=valid_ratio_z,
+                gamma=gamma,
+                chunk_size=comparison_chunk_size,
+            )
+            scores[valid_target_mask] = counts / len(valid_ratio_z)
 
         if return_details:
             return scores, {
@@ -245,6 +311,7 @@ class RMIAReferenceManager:
                 "ratio_z": ratio_z,
             }
         return scores
+
 
     def _train_and_record(
         self,
@@ -341,6 +408,35 @@ class RMIAReferenceManager:
                 loss = criterion(logits, batch_y)
                 loss.backward()
                 optimizer.step()
+
+
+def _count_ratio_exceedances(
+    ratio_x: np.ndarray,
+    ratio_z: np.ndarray,
+    gamma: float,
+    chunk_size: int,
+) -> np.ndarray:
+    """Count RMIA pairwise comparisons using bounded-memory 2-D blocks."""
+    if chunk_size < 1:
+        raise ValueError("comparison_chunk_size must be at least 1.")
+
+    ratio_x = np.asarray(ratio_x, dtype=np.float64).reshape(-1)
+    ratio_z = np.asarray(ratio_z, dtype=np.float64).reshape(-1)
+    counts = np.zeros(len(ratio_x), dtype=np.int64)
+
+    for x_start in range(0, len(ratio_x), chunk_size):
+        x_stop = min(x_start + chunk_size, len(ratio_x))
+        x_values = ratio_x[x_start:x_stop, None]
+        block_counts = np.zeros(x_stop - x_start, dtype=np.int64)
+        for z_start in range(0, len(ratio_z), chunk_size):
+            z_stop = min(z_start + chunk_size, len(ratio_z))
+            z_values = ratio_z[None, z_start:z_stop]
+            block_counts += np.sum(
+                x_values / (z_values + 1e-10) > gamma,
+                axis=1,
+            )
+        counts[x_start:x_stop] = block_counts
+    return counts
 
 
 def _concat_nan_columns(left: np.ndarray, right: np.ndarray) -> np.ndarray:

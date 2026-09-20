@@ -89,11 +89,23 @@ class LiRAAttack(BaseAttack):
             batch_size=int(reference_data.get("batch_size", self.batch_size)),
             device=str(self.device),
         )
+        required_indices = attack_input.metadata.get(
+            "sample_indices", reference_data.get("sample_indices")
+        )
         manager.train_reference_models(
             data_sizes=reference_data.get("data_sizes", self.data_sizes),
             random_seed_num=int(reference_data.get("random_seed_num", self.random_seed_num)),
             reference_model_number=int(
                 reference_data.get("reference_model_number", self.reference_model_number)
+            ),
+            ensure_full_coverage=bool(reference_data.get("ensure_full_coverage", True)),
+            min_reference_observations=int(
+                reference_data.get("min_reference_observations", 2)
+            ),
+            required_indices=(
+                np.asarray(required_indices, dtype=np.int64)
+                if required_indices is not None
+                else None
             ),
         )
         self.reference_manager = manager

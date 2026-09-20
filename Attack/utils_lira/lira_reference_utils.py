@@ -30,7 +30,11 @@ class ReferencePredictions:
 
 def logit_transform(probabilities: np.ndarray, epsilon: float = 1e-10) -> np.ndarray:
     """Convert probabilities to logits with clipping for numerical stability."""
-    clipped = np.clip(probabilities, epsilon, 1.0 - epsilon)
+    # Reference caches are commonly float32.  In that dtype ``1 - 1e-10``
+    # rounds back to exactly 1, which makes the subsequent logit infinite.
+    # Promote before clipping so both tails have a representable safety margin.
+    values = np.asarray(probabilities, dtype=np.float64)
+    clipped = np.clip(values, epsilon, 1.0 - epsilon)
     return np.log(clipped / (1.0 - clipped))
 
 
@@ -104,6 +108,9 @@ class LiRAReferenceManager:
         data_sizes: List[int],
         random_seed_num: int = 5,
         reference_model_number: int = 10,
+        ensure_full_coverage: bool = True,
+        min_reference_observations: int = 2,
+        required_indices: Optional[np.ndarray] = None,
     ) -> None:
         """
         Train reference models and collect in/out predictions.
@@ -118,6 +125,8 @@ class LiRAReferenceManager:
         """
         if reference_model_number < 2:
             raise ValueError("reference_model_number must be at least 2.")
+        if min_reference_observations < 1:
+            raise ValueError("min_reference_observations must be at least 1.")
 
         for data_size in data_sizes:
             for seed_offset in range(random_seed_num):
@@ -173,6 +182,67 @@ class LiRAReferenceManager:
                         train_indices=idx_b,
                         eval_indices=idx_a,
                     )
+
+        if ensure_full_coverage:
+            self._ensure_reference_coverage(
+                required_indices=required_indices,
+                min_reference_observations=min_reference_observations,
+            )
+
+    def _ensure_reference_coverage(
+        self,
+        required_indices: Optional[np.ndarray],
+        min_reference_observations: int,
+    ) -> None:
+        """Add reciprocal full-universe models until every required sample has
+        enough in/out observations.
+
+        A reciprocal pair trains on complementary halves of the candidate
+        universe. Consequently every sample receives one in-model and one
+        out-model prediction per round, which deterministically closes the
+        coverage holes left by sampled ``data_sizes`` configurations.
+        """
+        if self.total_samples < 2:
+            raise ValueError("At least two reference samples are required.")
+
+        if required_indices is None:
+            required = np.arange(self.total_samples, dtype=np.int64)
+        else:
+            required = np.unique(np.asarray(required_indices, dtype=np.int64))
+        if required.size == 0:
+            return
+        if required.min() < 0 or required.max() >= self.total_samples:
+            raise IndexError("required_indices contains an out-of-range sample index.")
+
+        merged_X = np.concatenate([self.train_X, self.test_X], axis=0)
+        merged_y = np.concatenate([self.train_y, self.test_y], axis=0)
+        merged_indices = np.arange(self.total_samples, dtype=np.int64)
+        self.reference_predictions.sample_labels[:] = merged_y
+
+        coverage_round = 0
+        while True:
+            min_in = min(
+                len(self.reference_predictions.in_model_predictions.get(int(i), []))
+                for i in required
+            )
+            min_out = min(
+                len(self.reference_predictions.out_model_predictions.get(int(i), []))
+                for i in required
+            )
+            if min_in >= min_reference_observations and min_out >= min_reference_observations:
+                return
+
+            split_seed = 1_000_003 + coverage_round
+            x_a, x_b, y_a, y_b, idx_a, idx_b = train_test_split(
+                merged_X,
+                merged_y,
+                merged_indices,
+                test_size=0.5,
+                random_state=split_seed,
+            )
+            self._train_and_record(x_a, y_a, x_b, y_b, idx_a, idx_b)
+            self._train_and_record(x_b, y_b, x_a, y_a, idx_b, idx_a)
+            coverage_round += 1
 
     def get_sample_predictions(self, sample_indices: np.ndarray) -> Dict[str, np.ndarray]:
         """

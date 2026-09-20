@@ -130,6 +130,7 @@ class RMIAAttack(BaseAttack):
         gamma: float = 1.0,
         pred_threshold: float = 0.5,
         device: Optional[str] = None,
+        comparison_chunk_size: int = 1024,
     ) -> None:
         self.data_sizes = data_sizes or [128]
         self.random_seed_num = random_seed_num
@@ -138,6 +139,9 @@ class RMIAAttack(BaseAttack):
         self.a = a
         self.gamma = gamma
         self.pred_threshold = pred_threshold
+        if comparison_chunk_size < 1:
+            raise ValueError("comparison_chunk_size must be at least 1.")
+        self.comparison_chunk_size = comparison_chunk_size
         self.device = torch.device(
             device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
         )
@@ -171,12 +175,23 @@ class RMIAAttack(BaseAttack):
             batch_size=int(reference_data.get("batch_size", self.batch_size)),
             device=str(self.device),
         )
+        required_parts = []
+        for key in ("sample_indices", "population_indices"):
+            value = attack_input.metadata.get(key, reference_data.get(key))
+            if value is not None:
+                required_parts.append(np.asarray(value, dtype=np.int64).reshape(-1))
+        required_indices = np.unique(np.concatenate(required_parts)) if required_parts else None
         manager.train_reference_models(
             data_sizes=reference_data.get("data_sizes", self.data_sizes),
             random_seed_num=int(reference_data.get("random_seed_num", self.random_seed_num)),
             reference_model_number=int(
                 reference_data.get("reference_model_number", self.reference_model_number)
             ),
+            ensure_full_coverage=bool(reference_data.get("ensure_full_coverage", True)),
+            min_reference_observations=int(
+                reference_data.get("min_reference_observations", 2)
+            ),
+            required_indices=required_indices,
         )
         self.reference_manager = manager
         return self
@@ -202,6 +217,9 @@ class RMIAAttack(BaseAttack):
             population_true_labels=population_labels,
             a=float(attack_input.config.get("a", self.a)),
             gamma=float(attack_input.config.get("gamma", self.gamma)),
+            comparison_chunk_size=int(
+                attack_input.config.get("comparison_chunk_size", self.comparison_chunk_size)
+            ),
             return_details=True,
         )
         pred_threshold = float(attack_input.config.get("pred_threshold", self.pred_threshold))
@@ -232,6 +250,9 @@ class RMIAAttack(BaseAttack):
                 "a": float(attack_input.config.get("a", self.a)),
                 "gamma": float(attack_input.config.get("gamma", self.gamma)),
                 "pred_threshold": pred_threshold,
+                "comparison_chunk_size": int(
+                    attack_input.config.get("comparison_chunk_size", self.comparison_chunk_size)
+                ),
             },
         )
 
@@ -349,8 +370,10 @@ def _tpr_at_fpr(y_true: np.ndarray, y_score: np.ndarray, fpr_threshold: float) -
     if len(np.unique(y_true)) < 2:
         return 0.0
     fpr, tpr, _ = roc_curve(y_true, y_score)
-    idx = int(np.argmin(np.abs(fpr - fpr_threshold)))
-    return float(tpr[idx])
+    within_budget = fpr <= fpr_threshold
+    if not within_budget.any():
+        return 0.0
+    return float(tpr[within_budget].max())
 
 
 __all__ = [
