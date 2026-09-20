@@ -74,7 +74,6 @@ All classes subclass `BaseAttack` and consume `AttackInput` to produce
 | `MEMIAAttack` | [me_mia.py](Attack/me_mia.py) | classifier on per-user score features | [rec_mia_demo.py](Attack/rec_mia_demo.py) |
 | `CompareMIAAttack` | [compare_mia.py](Attack/compare_mia.py) | target-surrogate NDCG discrepancy features, recommender | [rec_mia_demo.py](Attack/rec_mia_demo.py) |
 | `ShadowFreeMIAAttack` | [shadow_free_mia.py](Attack/shadow_free_mia.py) | embedding similarity, no shadow / no target query | [shadow_free_mia_demo.py](Attack/shadow_free_mia_demo.py) |
-| `EncoderMIAttack` | [encodermi_attack.py](Attack/encodermi_attack.py) | augmentation-consistency vectors on contrastive encoders | [encodermi_attack_demo.py](Attack/encodermi_attack_demo.py) |
 | `TransferAttack`, `BoundaryAttack` | [transfer_attack.py](Attack/transfer_attack.py) | transfer and decision-boundary | [transfer_boundary_demo.py](Attack/transfer_boundary_demo.py) |
 
 ## Recommender Summary
@@ -111,7 +110,7 @@ All classes subclass `BaseDefense` and consume `DefenseInput` to produce
 | `HAMPDefense` | [hamp.py](Defense/hamp.py) | high-entropy training and rank-preserving output modification, hybrid | [hamp_demo.py](Defense/hamp_demo.py) |
 | `EarlyStopDefense` | [early_stop.py](Defense/early_stop.py) | validation-monitored or fixed-epoch early stopping, training-time | [early_stop_demo.py](Defense/early_stop_demo.py) |
 | `AdvRegDefense` | [adv_reg.py](Defense/adv_reg.py) | adversarial membership regularization, training-time | [adv_reg_demo.py](Defense/adv_reg_demo.py) |
-| `MemGuardDefense` | [memguard.py](Defense/memguard.py) | inference-time posterior perturbation onto a calibrated entropy target (CCS 2019) | [memguard_demo.py](Defense/memguard_demo.py) |
+| `MemGuardDefense` | [memguard.py](Defense/memguard.py) | inference-time adversarial posterior perturbation against a surrogate attack model (Jia et al., CCS 2019) | [memguard_demo.py](Defense/memguard_demo.py) |
 | `PopularityRandomizationDefense`, `RecommendationListShuffleDefense` | [rec_privacy_defenses.py](Defense/rec_privacy_defenses.py) | recommender output-processing | [rec_privacy_defense_demo.py](Defense/rec_privacy_defense_demo.py) |
 
 The classifier defenses above accept PyTorch models returning a logits
@@ -120,14 +119,21 @@ tensor, a tuple whose first item is logits, or a mapping with a `logits` item.
 `auxiliary_data`; `HAMPDefense` accepts a dataset-specific random non-member
 generator there. `EarlyStopDefense` uses validation monitoring by default and
 supports the fixed-checkpoint protocol from the reference evaluation through
-`defense_config={"stop_epoch": ...}`. `MemGuardDefense` is inference-time: it
-keeps the model unchanged and maps every released posterior onto the canonical
-`[c, (1-c)/(K-1), ...]` form whose entropy matches a target calibrated from
-non-member posteriors (`auxiliary_data['nonmember_data']`). This preserves
-argmax predictions exactly, drives entropy attacks to ~random AUROC, and
-strongly suppresses confidence/loss attacks; the residual signal is bounded
-by the correctness channel that argmax preservation inherently leaves open.
-It also accepts precomputed `signals['probabilities']` / `signals['logits']`.
+`defense_config={"stop_epoch": ...}`. `MemGuardDefense` is inference-time and
+follows the official algorithm (Jia et al., CCS 2019; upstream code:
+https://github.com/jinyuan-jia/MemGuard): it first trains a surrogate
+membership classifier on the sorted posteriors of members
+(`train_data` through the target model) vs non-members
+(`auxiliary_data['nonmember_data']`), then perturbs every released posterior
+by the adversarial Lagrangian optimization — minimize the surrogate score
+toward its 0.5 boundary while keeping the argmax label and staying close to
+the original posterior (c1/c2/c3 = 1/10/0.1, c3 growing 10x per outer round).
+Accuracy is preserved exactly; entropy/confidence/loss attacks are
+substantially weakened (see the demo's printed AUROC benchmark), with the
+correctness channel inherently left open. It also
+accepts precomputed `signals['probabilities']` / `signals['logits']` with
+posteriors supplied via `auxiliary_data['member_probabilities']` /
+`['nonmember_probabilities']`.
 
 ## Quick Start
 
@@ -140,7 +146,6 @@ python Attack/qmia_demo.py
 python Attack/gan_leaks_demo.py
 python Attack/enhanced_mia_demo.py
 python Attack/shadow_free_mia_demo.py
-python Attack/encodermi_attack_demo.py
 python Attack/rec_mia_demo.py --method compare
 python Defense/vae_dp_demo.py
 python Defense/relax_loss_demo.py

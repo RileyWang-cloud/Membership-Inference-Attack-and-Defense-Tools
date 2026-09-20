@@ -2,39 +2,77 @@
 
 Reference: Jia, Gong, Bi, Li and Cao, "MemGuard: Defending against Black-Box
 Membership Inference Attacks via Adversarial Examples", CCS 2019.
+Official implementation: https://github.com/jinyuan-jia/MemGuard
+(local snapshot: ``Ref/MemGuard_official/``, in particular
+``defense_framework.py`` and ``train_defense_model_defensemodel.py``).
 
-MemGuard is an inference-time defense: it leaves the model untouched and
-instead perturbs every posterior (probability vector) that the model releases.
-The per-sample perturbation is chosen so that
+This file follows the official method closely:
 
-1. utility is preserved -- the perturbed posterior stays on the probability
-   simplex, keeps the original argmax prediction, and keeps the
-   predicted-class probability above a confidence floor (the paper's
-   ``0.5 + epsilon`` zero-loss condition), and
-2. the membership signal is destroyed -- the entropy of the perturbed
-   posterior is driven onto a calibration target estimated from non-member
-   posteriors, so confidence / entropy / loss based attacks no longer
-   separate members from non-members.  The defense cannot tell members from
-   non-members at deployment time, so *every* released posterior is moved
-   onto the same entropy target from either side, which is also the fixed
-   point of the paper's Lagrangian alternation.
+1. ``fit`` trains the defender's own surrogate attack model -- a small binary
+   classifier that separates the *sorted posteriors* of the target model on
+   its training data (members, label 1) from posteriors on non-member data
+   (label 0).  Architecture and objective mirror the official
+   ``model_defense``: Dense(256)-relu -> Dense(128)-relu -> Dense(64)-relu ->
+   Dense(1) with sigmoid, trained with binary cross-entropy (400 epochs,
+   batch 64).  Two training deviations, both motivated below: the surrogate
+   is optimized with Adam instead of the official SGD (lr 0.001) -- those
+   constants majority-collapse on calibration sets smaller than the official
+   2000 posteriors of a 30-class model, while Adam converges across scales --
+   and the training is repeated from several independent initializations.
 
-The paper solves this with a per-sample Lagrangian
-``min_delta f(p + delta) - lambda * g(p + delta)`` and alternating updates of
-``delta`` and ``lambda``.  This implementation notes that the fixed point has
-a closed form: among posteriors with entropy ``T`` and predicted-class
-probability at least the floor, the canonical solution -- and the limit of
-the alternating optimization -- is ``[c, (1-c)/(K-1), ...]`` placed on the
-original argmax, where ``c`` is the unique confidence with entropy ``T``.
-``c`` is found by a scalar bisection (the same construction HAMP uses for its
-high-entropy training targets), which makes the defense deterministic,
-vectorized over the whole batch, and free of optimizer tuning.
+2. ``infer`` perturbs every released posterior with the official adversarial
+   optimization.  Working in sorted-posterior coordinates on the logit vector
+   ``f`` (posterior = softmax(f), so gradients flow through the softmax just
+   like the official ``model_defense_optimize``), each step minimizes the
+   Lagrangian
+
+       c1 * |surrogate_logit(softmax(f))|                   (privacy)
+       + c2 * relu(max_other(f) - f[predicted])              (keep argmax)
+       + c3 * || softmax(f) - original_posterior ||_1        (stay close)
+
+   with the official constants ``c1 = 1.0``, ``c2 = 10.0``, ``c3 = 0.1``
+   growing 10x per outer round up to 1e5, a step size of 0.1 along the L2
+   normalized gradient, and at most 300 inner iterations.  The inner loop
+   stops once the predicted label is intact and the surrogate score has
+   reached the 0.5 decision boundary; a sample keeps the successful
+   perturbation that lands closest to the boundary, or the original posterior
+   if the optimization fails outright -- so the argmax prediction, and
+   therefore accuracy, is preserved exactly.
+
+Deviations from the official code, all documented here and in the function
+defaults:
+
+- mechanical: the per-sample TensorFlow loop is re-expressed as a batched
+  PyTorch state machine with the same per-sample semantics (same losses,
+  constants, resets, and stopping rules), which makes the defense vectorized
+  over the query batch;
+- the official inner loop stops only when the surrogate score strictly
+  crosses 0.5 to the other side.  With a finite step size the iterate can
+  instead stall asymptotically just short of the boundary (observed at
+  |score - 0.5| ~ 0.004), and the official rule would then leave those
+  posteriors undefended.  This implementation therefore also accepts
+  ``|score - 0.5| <= crossing_tolerance`` (default 0.01) as having reached
+  the boundary, which is the paper's stated goal (drive the attack model's
+  output to 0.5); the official 1e-5 tolerance on the *initial* score is kept
+  for the already-calibrated early exit;
+- a single step of finite size can also *overshoot*: the score jumps past
+  0.5 to the other side and the official stopping rule accepts it regardless
+  of magnitude.  Overshooting steps are refined by bisecting the step
+  segment onto the 0.5 boundary, and when several outer rounds succeed the
+  perturbation landing closest to the boundary is kept -- both serve the
+  paper's stated goal;
+- the surrogate is trained ``surrogate_restarts`` (default 3) times from
+  independent initializations, keeping the run with the lowest final training
+  loss.  On calibration sets far smaller than the official 2000 posteriors a
+  single initialization can land in a basin whose boundary barely separates
+  members from non-members, and the perturbation then stalls far from 0.5;
+  retraining from a different seed reliably escapes such basins.
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -50,6 +88,372 @@ from Defense._classification import (
 )
 from Defense.base import BaseDefense, DefenseEvaluationResult, DefenseInput, DefenseOutput
 
+# Official tolerance on the *initial* surrogate score: a posterior whose
+# score already sits this close to the 0.5 boundary is released untouched.
+_ALREADY_CALIBRATED_TOLERANCE = 1e-5
+
+
+# ----------------------------------------------------------------------
+# Surrogate attack model (official ``model_defense`` / ``model_defense_optimize``)
+# ----------------------------------------------------------------------
+
+
+class _SurrogateAttackNet(nn.Module):
+    """Official ``model_defense`` stack: posteriors -> 256 -> 128 -> 64 -> 1.
+
+    The official ``model_defense_optimize`` used inside the perturbation loop
+    is this same network with a softmax spliced in front of the input; here
+    the softmax lives at the call sites so one set of weights serves both
+    roles, exactly like the official weight sharing.
+    """
+
+    def __init__(self, num_classes: int, hidden_dims: Sequence[int] = (256, 128, 64)) -> None:
+        super().__init__()
+        layers: List[nn.Module] = []
+        previous = int(num_classes)
+        for width in hidden_dims:
+            layers += [nn.Linear(previous, int(width)), nn.ReLU()]
+            previous = int(width)
+        layers += [nn.Linear(previous, 1)]
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, posteriors: torch.Tensor) -> torch.Tensor:
+        """Membership logit (pre-sigmoid); shape ``(batch,)``."""
+        return self.network(posteriors).squeeze(1)
+
+
+def train_surrogate_attack_model(
+    member_posteriors: torch.Tensor,
+    nonmember_posteriors: torch.Tensor,
+    *,
+    hidden_dims: Sequence[int] = (256, 128, 64),
+    epochs: int = 400,
+    learning_rate: float = 0.005,
+    batch_size: int = 64,
+    seed: int = 1000,
+    restarts: int = 3,
+    device: Optional[str] = None,
+) -> Tuple[_SurrogateAttackNet, Dict[str, Any]]:
+    """Train the surrogate membership classifier on sorted posteriors.
+
+    Mirrors ``train_defense_model_defensemodel.py``: features are the target
+    model's posteriors sorted per row, labels are 1 for members and 0 for
+    non-members, trained on binary cross-entropy.  Two robustness deviations
+    from the official single SGD (lr 0.001) run, both documented in the
+    module docstring: the optimizer is Adam (official constants stall in the
+    majority class on small calibration sets), and `restarts` independent
+    initializations are trained, keeping the one with the lowest final
+    training loss (on small calibration sets a single random init can land
+    in a basin whose decision boundary barely separates the classes).
+    """
+    members = torch.as_tensor(member_posteriors, dtype=torch.float32).detach()
+    nonmembers = torch.as_tensor(nonmember_posteriors, dtype=torch.float32).detach()
+    if members.ndim != 2 or nonmembers.ndim != 2:
+        raise ValueError("member/nonmember posteriors must have shape (batch, classes).")
+    if members.shape[1] != nonmembers.shape[1]:
+        raise ValueError("member and nonmember posteriors must share the class dimension.")
+    if len(members) == 0 or len(nonmembers) == 0:
+        raise ValueError("MemGuard needs at least one member and one non-member posterior.")
+
+    # Official trains on the sorted posteriors (np.sort along the class axis).
+    features = torch.sort(torch.cat([members, nonmembers]), dim=1).values.to(device)
+    labels = torch.cat(
+        [torch.ones(len(members)), torch.zeros(len(nonmembers))]
+    ).to(device)
+    criterion = nn.BCEWithLogitsLoss()
+    num_rows = len(features)
+
+    best_surrogate: Optional[_SurrogateAttackNet] = None
+    best_loss: Optional[float] = None
+    info: Dict[str, Any] = {}
+    restart_losses: List[float] = []
+    restart_train_accuracies: List[float] = []
+    for restart in range(max(1, int(restarts))):
+        restart_seed = int(seed) + restart
+        # fork_rng only takes CUDA device ids for the extra-device argument;
+        # the CPU generator is always forked, which is all this init needs.
+        with torch.random.fork_rng():
+            torch.manual_seed(restart_seed)
+            surrogate = _SurrogateAttackNet(features.shape[1], hidden_dims).to(device)
+        surrogate.train()
+        optimizer = torch.optim.Adam(surrogate.parameters(), lr=float(learning_rate))
+        generator = torch.Generator().manual_seed(restart_seed)
+
+        for _ in range(int(epochs)):
+            order = torch.randperm(num_rows, generator=generator).to(device)
+            for start in range(0, num_rows, int(batch_size)):
+                batch = order[start : start + int(batch_size)]
+                logits = surrogate(features[batch])
+                loss = criterion(logits, labels[batch])
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+        surrogate.eval()
+        with torch.no_grad():
+            final_logits = surrogate(features)
+            final_loss = float(criterion(final_logits, labels))
+            final_accuracy = float(((final_logits > 0.0) == labels).float().mean())
+        restart_losses.append(final_loss)
+        restart_train_accuracies.append(final_accuracy)
+        if best_loss is None or final_loss < best_loss:
+            best_loss = final_loss
+            best_surrogate = surrogate
+            info = {
+                "num_member_posteriors": int(len(members)),
+                "num_nonmember_posteriors": int(len(nonmembers)),
+                "num_classes": int(features.shape[1]),
+                "hidden_dims": [int(width) for width in hidden_dims],
+                "epochs": int(epochs),
+                "learning_rate": float(learning_rate),
+                "batch_size": int(batch_size),
+                "seed": int(restart_seed),
+                "restarts": max(1, int(restarts)),
+                "restart_index": restart,
+                "train_loss": final_loss,
+                "train_accuracy": final_accuracy,
+            }
+    assert best_surrogate is not None
+    info["restart_losses"] = list(restart_losses)
+    info["restart_train_accuracies"] = list(restart_train_accuracies)
+    return best_surrogate, info
+
+
+# ----------------------------------------------------------------------
+# Perturbation (official ``defense_framework.py`` loop, batched)
+# ----------------------------------------------------------------------
+
+
+def perturb_posteriors(
+    probabilities: torch.Tensor,
+    surrogate: _SurrogateAttackNet,
+    *,
+    c1: float = 1.0,
+    c2: float = 10.0,
+    c3_init: float = 0.1,
+    c3_growth: float = 10.0,
+    c3_max: float = 100000.0,
+    step_size: float = 0.1,
+    max_iterations: int = 300,
+    crossing_tolerance: float = 0.01,
+) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    """Perturb posteriors so the surrogate attack model cannot separate them.
+
+    Vectorized equivalent of the official per-sample loop in
+    ``defense_framework.py``; every constant keeps its official value by
+    default.  See the module docstring for the Lagrangian and the stopping
+    rules.  ``crossing_tolerance`` widens the official strict-crossing stop
+    to "within tolerance of the 0.5 boundary" (module docstring, deviation 2).
+    Samples whose optimization fails keep their original posterior,
+    and the argmax prediction is preserved for every row either way.  When
+    several outer rounds succeed, the perturbation landing closest to the
+    0.5 boundary is kept (module docstring, deviation 3).
+
+    Returns ``(protected, stats)``.
+    """
+    if probabilities.ndim != 2:
+        raise ValueError("probabilities must have shape (batch, classes).")
+    if probabilities.shape[1] < 2:
+        raise ValueError("MemGuard requires at least two classes.")
+    # Work on the surrogate's device; the optimization below must also run
+    # under enable_grad so it works when the caller wrapped us in no_grad
+    # (e.g. inside the protected predictor's forward).
+    device = next(surrogate.parameters()).device
+    probs = probabilities.detach().to(device=device, dtype=torch.float32)
+    num_rows, num_classes = probs.shape
+    if num_rows == 0:
+        return probs.clone(), {
+            "num_rows": 0,
+            "num_classes": int(num_classes),
+            "perturbed_fraction": 0.0,
+            "kept_original_fraction": 0.0,
+            "already_calibrated_fraction": 0.0,
+            "label_failure_fraction": 0.0,
+            "maxiter_failure_fraction": 0.0,
+            "mean_outer_rounds_perturbed": 0.0,
+            "mean_inner_steps_perturbed": 0.0,
+            "mean_l1_perturbation": 0.0,
+            "surrogate_score_gap_before": 0.0,
+            "surrogate_score_gap_after": 0.0,
+            "argmax_preserved_fraction": 0.0,
+        }
+
+    # Stable sort keeps tied maxima in their original column order, so the
+    # argmax position in sorted coordinates always maps back to the column
+    # probs.argmax would report (torch.sort is not stable by default).
+    sorted_probs, sort_idx = torch.sort(probs, dim=1, stable=True)
+    # The official loop optimizes the logit vector whose softmax is the
+    # posterior; from posteriors alone the monotone stand-in is the
+    # log-posterior (its softmax reproduces the posterior exactly).
+    origin_logits = sorted_probs.clamp_min(1e-12).log()
+    # One-hot of the predicted position in sorted coordinates (ascending, so
+    # this is the last position unless the maximum is tied).
+    max_pos = sorted_probs.argmax(dim=1)
+    label_mask = torch.nn.functional.one_hot(max_pos, num_classes).to(torch.float32)
+
+    was_training = surrogate.training
+    surrogate.eval()
+    try:
+        with torch.enable_grad():
+            with torch.no_grad():
+                initial_scores = torch.sigmoid(surrogate(sorted_probs))
+            initial_side = initial_scores - 0.5
+
+            best = sorted_probs.clone()
+            best_scores = initial_scores.clone()
+            ever_perturbed = torch.zeros(num_rows, dtype=torch.bool, device=device)
+            # 0 = none, 1 = label failure, 2 = max-iteration failure.
+            fail_code = torch.zeros(num_rows, dtype=torch.long, device=device)
+            # Official early exit: a score within 1e-5 of the boundary is
+            # already calibrated and keeps its posterior untouched.  This is
+            # deliberately NOT crossing_tolerance, which only governs the
+            # perturbation stop (module docstring, deviation 2).
+            already = initial_side.abs() <= _ALREADY_CALIBRATED_TOLERANCE
+            finished = already.clone()
+            c3 = torch.full((num_rows,), float(c3_init), device=device)
+            rounds_used = torch.zeros(num_rows, dtype=torch.long, device=device)
+            steps_used = torch.zeros(num_rows, dtype=torch.long, device=device)
+            # Score gap of the current iterate (starts at the origin); lets
+            # the overshoot refinement below verify its bracket.
+            current_gap = initial_side.clone()
+
+            while bool((~finished).any()):
+                active = ~finished
+                # Official resets the iterate to the original logits every outer
+                # round before re-running the inner loop.
+                sample_f = origin_logits.clone()
+                stepping = active.clone()
+
+                for _ in range(int(max_iterations)):
+                    if not bool(stepping.any()):
+                        break
+                    iterate = sample_f.detach().requires_grad_(True)
+                    probs_f = torch.softmax(iterate, dim=1)
+                    score_logit = surrogate(probs_f)
+                    correct = (label_mask * iterate).sum(dim=1)
+                    wrong = (iterate - 1e8 * label_mask).max(dim=1).values
+                    per_row_loss = (
+                        c1 * score_logit.abs()
+                        + c2 * torch.relu(wrong - correct)
+                        + c3 * (probs_f - sorted_probs).abs().sum(dim=1)
+                    )
+                    # Rows outside `stepping` do not contribute, so their
+                    # gradients are exactly zero and their iterates stay frozen.
+                    gradient = torch.autograd.grad(per_row_loss[stepping].sum(), iterate)[0]
+                    gradient = gradient / gradient.norm(dim=1, keepdim=True).clamp_min(1e-12)
+                    with torch.no_grad():
+                        previous_f = sample_f
+                        sample_f = sample_f - step_size * gradient
+                        scores = torch.sigmoid(surrogate(torch.softmax(sample_f, dim=1)))
+                        gap = scores - 0.5
+                        # A step of finite size can overshoot: the score jumps
+                        # past 0.5 to the other side, far outside tolerance.
+                        # The score is continuous along the step segment and
+                        # the previous iterate was still on the origin side
+                        # (checked via current_gap), so bisecting the segment
+                        # lands on the 0.5 boundary (the paper's stated goal).
+                        # Rows that already sit past the boundary -- possible
+                        # while the argmax constraint is still being repaired
+                        # -- have no valid bracket and keep the stepped
+                        # iterate, exactly like the official loop.
+                        overshoot = (
+                            stepping
+                            & (gap * initial_side < 0.0)
+                            & (gap.abs() > crossing_tolerance)
+                            & (current_gap * initial_side > 0.0)
+                        )
+                        if bool(overshoot.any()):
+                            indices = overshoot.nonzero(as_tuple=True)[0]
+                            lo = previous_f[indices]
+                            hi = sample_f[indices]
+                            hi_gap = gap[indices]
+                            for _ in range(10):
+                                mid = 0.5 * (lo + hi)
+                                mid_gap = (
+                                    torch.sigmoid(surrogate(torch.softmax(mid, dim=1))) - 0.5
+                                )
+                                crossed_side = mid_gap * hi_gap > 0.0
+                                hi = torch.where(crossed_side[:, None], mid, hi)
+                                lo = torch.where(crossed_side[:, None], lo, mid)
+                            lo_gap = (
+                                torch.sigmoid(surrogate(torch.softmax(lo, dim=1))) - 0.5
+                            )
+                            hi_gap = (
+                                torch.sigmoid(surrogate(torch.softmax(hi, dim=1))) - 0.5
+                            )
+                            take_hi = hi_gap.abs() < lo_gap.abs()
+                            refined = torch.where(take_hi[:, None], hi, lo)
+                            refined_gap = torch.where(take_hi, hi_gap, lo_gap)
+                            sample_f = sample_f.index_copy(0, indices, refined)
+                            gap = gap.index_copy(0, indices, refined_gap)
+                        current_gap = gap
+                        argmax = sample_f.argmax(dim=1)
+                        crossed = (gap * initial_side <= 0.0) | (gap.abs() <= crossing_tolerance)
+                        steps_used += stepping.to(torch.long)
+                    # Inner-loop stop: predicted label intact AND surrogate score
+                    # reached the 0.5 boundary (crossed it, or within tolerance).
+                    stepping &= ~((argmax == max_pos) & crossed)
+
+                with torch.no_grad():
+                    final_scores = torch.sigmoid(surrogate(torch.softmax(sample_f, dim=1)))
+                    final_argmax = sample_f.argmax(dim=1)
+                    final_gap = final_scores - 0.5
+                    final_crossed = (final_gap * initial_side <= 0.0) | (
+                        final_gap.abs() <= crossing_tolerance
+                    )
+                # Post-loop checks in the official order: argmax first, then
+                # whether the score ever crossed 0.5.
+                label_failed = active & (final_argmax != max_pos)
+                maxiter_failed = active & ~label_failed & ~final_crossed
+                success = active & ~label_failed & ~maxiter_failed
+
+                new_best = torch.softmax(sample_f, dim=1)
+                # The official code keeps the last success of the c3-growth
+                # loop; a single step of finite size can also overshoot 0.5 by
+                # a wide margin (sign flip with |score - 0.5| >> tolerance),
+                # so among the successful rounds we keep the one landing
+                # closest to the 0.5 boundary -- the paper's stated goal.
+                take = success & (~ever_perturbed | (final_gap.abs() < (best_scores - 0.5).abs()))
+                best = torch.where(take[:, None], new_best, best)
+                best_scores = torch.where(take, final_scores, best_scores)
+                ever_perturbed |= take
+                fail_code[label_failed] = 1
+                fail_code[maxiter_failed] = 2
+                rounds_used[active] += 1
+                c3 = torch.where(success, c3 * float(c3_growth), c3)
+                finished |= label_failed | maxiter_failed | (c3 > float(c3_max))
+    finally:
+        surrogate.train(was_training)
+
+    protected = torch.empty_like(best)
+    protected.scatter_(1, sort_idx, best)
+    # Hand the result back on the caller's device so downstream .numpy()
+    # conversions work regardless of where the surrogate lives.
+    protected = protected.to(probabilities.device)
+
+    stats = {
+        "num_rows": int(num_rows),
+        "num_classes": int(num_classes),
+        "perturbed_fraction": float(ever_perturbed.float().mean()),
+        "kept_original_fraction": float((~ever_perturbed).float().mean()),
+        "already_calibrated_fraction": float(already.float().mean()),
+        "label_failure_fraction": float((fail_code == 1).float().mean()),
+        "maxiter_failure_fraction": float((fail_code == 2).float().mean()),
+        "mean_outer_rounds_perturbed": float(
+            rounds_used[ever_perturbed].float().mean() if bool(ever_perturbed.any()) else 0.0
+        ),
+        "mean_inner_steps_perturbed": float(
+            steps_used[ever_perturbed].float().mean() if bool(ever_perturbed.any()) else 0.0
+        ),
+        "mean_l1_perturbation": float((protected - probs).abs().sum(dim=1).mean()),
+        "surrogate_score_gap_before": float((initial_scores - 0.5).abs().mean()),
+        "surrogate_score_gap_after": float((best_scores - 0.5).abs().mean()),
+        "argmax_preserved_fraction": float(
+            (protected.argmax(dim=1) == probs.argmax(dim=1)).float().mean()
+        ),
+    }
+    return protected, stats
+
 
 def entropy_of_probabilities(probabilities: torch.Tensor) -> torch.Tensor:
     """Natural entropy of each row of a probability matrix.
@@ -61,128 +465,6 @@ def entropy_of_probabilities(probabilities: torch.Tensor) -> torch.Tensor:
         raise ValueError("probabilities must have shape (batch, classes).")
     clamped = probabilities.clamp_min(1e-12)
     return -(probabilities * clamped.log()).sum(dim=1)
-
-
-def entropy_at_confidence(confidence: float, num_classes: int) -> float:
-    """Entropy of ``[confidence, (1-confidence)/(K-1), ...]``."""
-    if num_classes < 2:
-        raise ValueError("MemGuard requires at least two classes.")
-    confidence = float(np.clip(confidence, 1e-12, 1.0))
-    other = (1.0 - confidence) / (num_classes - 1)
-    entropy = -confidence * np.log(confidence)
-    if other > 0.0:
-        entropy -= (num_classes - 1) * other * np.log(other)
-    return float(entropy)
-
-
-def max_entropy_at_floor(num_classes: int, confidence_floor: float) -> float:
-    """Highest entropy reachable while keeping the top probability at ``floor``.
-
-    This is the entropy of ``[floor, (1-floor)/(K-1), ...]`` and upper-bounds
-    the entropy target so that the perturbation always stays solvable.
-    """
-    if not 0.0 < confidence_floor < 1.0:
-        raise ValueError("confidence_floor must lie strictly between 0 and 1.")
-    return entropy_at_confidence(confidence_floor, num_classes)
-
-
-def confidence_for_entropy(
-    entropy_target: float,
-    num_classes: int,
-    confidence_floor: float,
-    bisection_iterations: int = 80,
-) -> float:
-    """Confidence ``c`` such that ``[c, (1-c)/(K-1), ...]`` has the target entropy.
-
-    ``entropy_at_confidence`` is strictly decreasing in ``c``, so a bisection
-    recovers ``c`` exactly.  The returned confidence respects the floor and
-    stays strictly above the uniform share, which keeps the argmax intact.
-    """
-    if num_classes < 2:
-        raise ValueError("MemGuard requires at least two classes.")
-    floor = min(confidence_floor, 1.0 - 1e-9)
-    # Keep the top probability strictly above the uniform share of the rest so
-    # the original argmax always survives, even for floors below 1/K.
-    lower = max(floor, (1.0 / num_classes) * (1.0 + 1e-6))
-    upper = 1.0 - 1e-9
-    target = float(np.clip(entropy_target, 0.0, entropy_at_confidence(lower, num_classes)))
-    for _ in range(int(bisection_iterations)):
-        middle = 0.5 * (lower + upper)
-        if entropy_at_confidence(middle, num_classes) > target:
-            lower = middle
-        else:
-            upper = middle
-    return 0.5 * (lower + upper)
-
-
-def perturb_probabilities(
-    probabilities: torch.Tensor,
-    *,
-    confidence_floor: float,
-    entropy_target: float,
-    bisection_iterations: int = 80,
-) -> Tuple[torch.Tensor, Dict[str, Any]]:
-    """Perturb posteriors to the entropy target under the utility constraints.
-
-    Every row is mapped to the canonical posterior ``[c, (1-c)/(K-1), ...]``
-    placed on the row's original argmax, where ``c`` solves the entropy
-    target under the confidence floor.  Rows already in that form are fixed
-    points of the map.
-
-    Args:
-        probabilities: tensor of shape ``(batch, classes)`` on the simplex.
-        confidence_floor: minimum kept probability of the original argmax
-            class (the paper's ``0.5 + epsilon``).
-        entropy_target: target entropy in nats; clipped to the feasible range.
-        bisection_iterations: iterations of the scalar entropy bisection.
-
-    Returns:
-        ``(protected, stats)`` where ``protected`` holds the perturbed
-        posteriors and ``stats`` summarizes the perturbation.
-    """
-    probs = probabilities.detach().to(torch.float32)
-    if probs.ndim != 2:
-        raise ValueError("probabilities must have shape (batch, classes).")
-    num_rows, num_classes = probs.shape
-    if num_classes < 2:
-        raise ValueError("MemGuard requires at least two classes.")
-    if not 0.0 < confidence_floor < 1.0:
-        raise ValueError("confidence_floor must lie strictly between 0 and 1.")
-
-    floor = min(confidence_floor, 1.0 - 1e-9)
-    reachable_max = max_entropy_at_floor(num_classes, floor)
-    target = float(np.clip(entropy_target, 0.0, reachable_max))
-    if num_rows == 0:
-        return probs.clone(), {
-            "num_rows": 0,
-            "num_classes": int(num_classes),
-            "entropy_target": target,
-            "entropy_floor_cap": reachable_max,
-        }
-    top_confidence = confidence_for_entropy(
-        target, num_classes, floor, bisection_iterations
-    )
-    other_confidence = (1.0 - top_confidence) / (num_classes - 1)
-
-    top = probs.argmax(dim=1)
-    protected = torch.full_like(probs, other_confidence)
-    protected[torch.arange(num_rows, device=probs.device), top] = top_confidence
-
-    entropies = entropy_of_probabilities(protected)
-    stats = {
-        "num_rows": int(num_rows),
-        "num_classes": int(num_classes),
-        "entropy_target": target,
-        "entropy_floor_cap": reachable_max,
-        "top_confidence": float(top_confidence),
-        "other_confidence": float(other_confidence),
-        "max_abs_entropy_gap": float((entropies - target).abs().max().item()),
-        "argmax_preserved_fraction": float(
-            (protected.argmax(dim=1) == top).float().mean().item()
-        ),
-        "mean_abs_perturbation": float((protected - probs).abs().sum(dim=1).mean().item()),
-    }
-    return protected, stats
 
 
 def tpr_at_fpr(labels: np.ndarray, scores: np.ndarray, fpr_target: float) -> float:
@@ -215,18 +497,20 @@ class _MemGuardProtectedPredictor(nn.Module):
     Returning ``log(protected_probabilities)`` keeps the wrapper a drop-in
     logits-style classifier: ``softmax(output)`` reproduces the protected
     posterior exactly, so downstream metrics and attacks consume it unchanged.
-    ``perturb`` is a frozen callable holding the resolved defense parameters,
-    so later refits of the defense never change this predictor's behavior.
+    The surrogate and solver parameters are captured at construction time, so
+    later refits of the defense never change this predictor's behavior.
     """
 
     def __init__(
         self,
         model: nn.Module,
-        perturb: Any,
+        surrogate: _SurrogateAttackNet,
+        solver_config: Dict[str, Any],
     ) -> None:
         super().__init__()
         self.model = model
-        self.perturb = perturb
+        self.surrogate = surrogate
+        self.solver_config = dict(solver_config)
 
     @torch.no_grad()
     def forward(self, samples: torch.Tensor) -> torch.Tensor:
@@ -237,34 +521,31 @@ class _MemGuardProtectedPredictor(nn.Module):
         finally:
             self.model.train(was_training)
         probabilities = torch.softmax(logits, dim=1)
-        protected, _ = self.perturb(probabilities)
+        protected, _ = perturb_posteriors(probabilities, self.surrogate, **self.solver_config)
         return protected.clamp_min(1e-12).log()
 
 
 class MemGuardDefense(BaseDefense):
-    """MemGuard inference-time posterior perturbation.
+    """MemGuard inference-time posterior perturbation (official algorithm).
 
     defense_mode: inference_time
 
-    Required:
-        - ``target_model`` plus ``samples``, or precomputed
+    Required (to train the surrogate attack model and to perturb):
+        - member posteriors: ``auxiliary_data['member_probabilities']``, or
+          ``target_model`` + ``train_data``
+        - non-member posteriors: ``auxiliary_data['nonmember_probabilities']``,
+          or ``target_model`` + ``auxiliary_data['nonmember_data']`` / ``test_data``
+        - posteriors to protect: ``target_model`` + ``samples``, or
           ``signals['probabilities']`` / ``signals['logits']``
     Main output:
         - ``protected_outputs`` (perturbed probabilities) and
           ``protected_predictor`` (model wrapper, when a target model exists)
 
-    ``fit`` calibrates the entropy target when non-member posteriors are
-    available through ``auxiliary_data['nonmember_probabilities']`` or
-    ``auxiliary_data['nonmember_data']`` (features pushed through the target
-    model).  The paper calibrates with the non-member minimum entropy
-    (``entropy_quantile = 0``); because a heavily over-fitted target is
-    confident on non-members too, that minimum can collapse to ~0, so the
-    robust default here is the median (``entropy_quantile = 0.5``).  Since
-    the perturbation moves *every* posterior -- member or non-member -- onto
-    the target from either side, both end up in the same entropy cluster and
-    the exact quantile is not critical.  Without calibration data the target
-    defaults to ``entropy_percentile_of_max`` of the maximum reachable
-    entropy.
+    The surrogate and the perturbation solver keep the official MemGuard
+    hyperparameters by default; every one of them can be overridden through
+    ``defense_config``.  The defense preserves each row's argmax prediction
+    exactly (failed optimizations keep the original posterior), so task
+    accuracy is unchanged by construction.
     """
 
     name = "memguard"
@@ -272,11 +553,13 @@ class MemGuardDefense(BaseDefense):
     defense_mode = "inference_time"
     supported_model_types = ["classifier"]
     required_input_keys = [
-        "target_model + samples, or signals['probabilities'] / signals['logits']"
+        "member posteriors + nonmember posteriors + posteriors to protect "
+        "(via target_model/data or auxiliary_data/signals)"
     ]
     optional_input_keys = [
         "labels",
         "signals",
+        "auxiliary_data.member_probabilities",
         "auxiliary_data.nonmember_probabilities",
         "auxiliary_data.nonmember_data",
         "train_data",
@@ -289,25 +572,45 @@ class MemGuardDefense(BaseDefense):
 
     def __init__(
         self,
-        confidence_floor: float = 0.51,
-        entropy_target: Optional[float] = None,
-        entropy_quantile: float = 0.5,
-        entropy_percentile_of_max: float = 0.95,
+        surrogate_hidden_dims: Sequence[int] = (256, 128, 64),
+        surrogate_epochs: int = 400,
+        surrogate_learning_rate: float = 0.005,
+        surrogate_batch_size: int = 64,
+        surrogate_seed: int = 1000,
+        surrogate_restarts: int = 3,
+        c1: float = 1.0,
+        c2: float = 10.0,
+        c3_init: float = 0.1,
+        c3_growth: float = 10.0,
+        c3_max: float = 100000.0,
+        step_size: float = 0.1,
+        max_iterations: int = 300,
+        crossing_tolerance: float = 0.01,
         batch_size: int = 128,
         device: Optional[str] = None,
     ) -> None:
-        self.confidence_floor = float(confidence_floor)
-        self.entropy_target = entropy_target
-        self.entropy_quantile = float(entropy_quantile)
-        self.entropy_percentile_of_max = float(entropy_percentile_of_max)
+        self.surrogate_hidden_dims = tuple(int(width) for width in surrogate_hidden_dims)
+        self.surrogate_epochs = int(surrogate_epochs)
+        self.surrogate_learning_rate = float(surrogate_learning_rate)
+        self.surrogate_batch_size = int(surrogate_batch_size)
+        self.surrogate_seed = int(surrogate_seed)
+        self.surrogate_restarts = int(surrogate_restarts)
+        self.c1 = float(c1)
+        self.c2 = float(c2)
+        self.c3_init = float(c3_init)
+        self.c3_growth = float(c3_growth)
+        self.c3_max = float(c3_max)
+        self.step_size = float(step_size)
+        self.max_iterations = int(max_iterations)
+        self.crossing_tolerance = float(crossing_tolerance)
         self.batch_size = int(batch_size)
         self.device = resolve_device(device)
 
         self.defended_model: Optional[nn.Module] = None
         self.protected_predictor: Optional[nn.Module] = None
+        self._surrogate: Optional[_SurrogateAttackNet] = None
         self._effective_config: Dict[str, Any] = {}
-        self._entropy_target: Optional[float] = None
-        self._entropy_target_source: Optional[str] = None
+        self._fit_info: Dict[str, Any] = {}
         self._last_perturb_stats: Dict[str, Any] = {}
         self._last_perturb_seconds: Optional[float] = None
 
@@ -318,62 +621,83 @@ class MemGuardDefense(BaseDefense):
     def fit(self, defense_input: DefenseInput) -> "MemGuardDefense":
         config = self._merge_config(defense_input.defense_config)
         self._effective_config = config
-        self._entropy_target = None
-        self._entropy_target_source = None
+        self._fit_info = {}
         # Reset per-call state so reusing one defense object never leaks the
         # previous call's model into a signals-only run.
         self.defended_model = None
         self.protected_predictor = None
+        self._surrogate = None
 
         if defense_input.target_model is not None:
             if not isinstance(defense_input.target_model, nn.Module):
                 raise TypeError("target_model must be a torch.nn.Module.")
             self.defended_model = defense_input.target_model.to(self.device)
 
+        member_probs = self._member_probabilities(defense_input)
         nonmember_probs = self._nonmember_probabilities(defense_input)
-        if nonmember_probs is not None:
-            if config["entropy_target"] is not None:
-                self._set_entropy_target(float(config["entropy_target"]), "explicit")
-            else:
-                entropies = entropy_of_probabilities(nonmember_probs).numpy()
-                quantile = float(np.quantile(entropies, config["entropy_quantile"]))
-                cap = max_entropy_at_floor(
-                    nonmember_probs.shape[1], config["confidence_floor"]
+        if member_probs is None or nonmember_probs is None:
+            missing = []
+            if member_probs is None:
+                missing.append("member posteriors (auxiliary_data['member_probabilities'] or target_model + train_data)")
+            if nonmember_probs is None:
+                missing.append(
+                    "non-member posteriors (auxiliary_data['nonmember_probabilities'] / "
+                    "['nonmember_data'], or target_model + test_data)"
                 )
-                self._set_entropy_target(float(np.clip(quantile, 0.0, cap)), "calibrated_nonmember_quantile")
+            raise ValueError(
+                "MemGuard trains a surrogate attack model on member vs non-member "
+                "posteriors and cannot run without them; missing: " + "; ".join(missing) + "."
+            )
+
+        surrogate, info = train_surrogate_attack_model(
+            member_probs,
+            nonmember_probs,
+            hidden_dims=tuple(config["surrogate_hidden_dims"]),
+            epochs=config["surrogate_epochs"],
+            learning_rate=config["surrogate_learning_rate"],
+            batch_size=config["surrogate_batch_size"],
+            seed=config["surrogate_seed"],
+            restarts=config["surrogate_restarts"],
+            device=self.device,
+        )
+        self._surrogate = surrogate.eval()
+        self._fit_info = info
         return self
 
     def infer(self, defense_input: DefenseInput) -> DefenseOutput:
-        # Re-fit on every infer: fit is cheap and this keeps direct infer()
-        # calls honest about the defense_config / calibration they carry.
-        self.fit(defense_input)
+        # BaseDefense.run() fits before inferring, so only retrain when a
+        # direct infer() call arrives unfitted or carries a different
+        # defense_config -- run() must not pay the surrogate training twice.
+        # Calibration DATA changes are not detected: callers going through
+        # infer() directly should fit() again themselves in that case.
+        if (
+            self._surrogate is None
+            or self._merge_config(defense_input.defense_config) != self._effective_config
+        ):
+            self.fit(defense_input)
         config = self._effective_config
         probs = self._input_probabilities(defense_input)
-        num_classes = probs.shape[1]
-
-        target = self._resolved_entropy_target(num_classes, config)
-        floor = config["confidence_floor"]
-        iterations = config["bisection_iterations"]
+        if probs.shape[1] != self._fit_info["num_classes"]:
+            raise ValueError(
+                "posteriors to protect must match the surrogate's class dimension "
+                f"({self._fit_info['num_classes']})."
+            )
 
         start = time.perf_counter()
-        protected, stats = perturb_probabilities(
-            probs,
-            confidence_floor=floor,
-            entropy_target=target,
-            bisection_iterations=iterations,
+        protected, stats = perturb_posteriors(
+            probs, self._surrogate, **self._solver_config(config)
         )
         self._last_perturb_stats = stats
         self._last_perturb_seconds = time.perf_counter() - start
 
         if self.defended_model is not None:
-            # The predictor freezes the resolved parameters so later refits of
-            # this defense never retroactively change released predictors.
-            frozen_perturb = self._frozen_perturb(num_classes)
-            # No .eval() here: it would recurse into the wrapped user model
-            # and flip its training mode permanently; forward() manages the
-            # wrapped model's mode itself.
+            # The predictor snapshots the surrogate and solver parameters, so
+            # later refits of this defense never retroactively change released
+            # predictors.  No .eval() here: it would recurse into the wrapped
+            # user model and flip its training mode permanently; forward()
+            # manages the wrapped model's mode itself.
             self.protected_predictor = _MemGuardProtectedPredictor(
-                self.defended_model, frozen_perturb
+                self.defended_model, self._surrogate, self._solver_config(config)
             ).to(self.device)
 
         return DefenseOutput(
@@ -382,9 +706,7 @@ class MemGuardDefense(BaseDefense):
             protected_outputs=protected.numpy(),
             artifacts={
                 "memguard_config": dict(config),
-                "requested_entropy_target": self._entropy_target,
-                "entropy_target": stats["entropy_target"],
-                "entropy_target_source": self._entropy_target_source,
+                "surrogate": dict(self._fit_info),
                 "perturbation_stats": dict(stats),
             },
             intermediate_outputs={
@@ -399,10 +721,9 @@ class MemGuardDefense(BaseDefense):
                 "defense_mode": self.defense_mode,
                 "protected_output_type": "probabilities",
                 "predictor_output_type": "log_probabilities",
-                "requested_entropy_target": self._entropy_target,
-                "entropy_target": stats["entropy_target"],
-                "entropy_target_source": self._entropy_target_source,
-                "top_confidence": stats.get("top_confidence"),
+                "surrogate_train_accuracy": self._fit_info.get("train_accuracy"),
+                "perturbed_fraction": stats["perturbed_fraction"],
+                "argmax_preserved_fraction": stats["argmax_preserved_fraction"],
             },
         )
 
@@ -540,69 +861,131 @@ class MemGuardDefense(BaseDefense):
 
     def _merge_config(self, overrides: Dict[str, Any]) -> Dict[str, Any]:
         config: Dict[str, Any] = {
-            "confidence_floor": self.confidence_floor,
-            "entropy_target": self.entropy_target,
-            "entropy_quantile": self.entropy_quantile,
-            "entropy_percentile_of_max": self.entropy_percentile_of_max,
-            "bisection_iterations": 80,
+            "surrogate_hidden_dims": list(self.surrogate_hidden_dims),
+            "surrogate_epochs": self.surrogate_epochs,
+            "surrogate_learning_rate": self.surrogate_learning_rate,
+            "surrogate_batch_size": self.surrogate_batch_size,
+            "surrogate_seed": self.surrogate_seed,
+            "surrogate_restarts": self.surrogate_restarts,
+            "c1": self.c1,
+            "c2": self.c2,
+            "c3_init": self.c3_init,
+            "c3_growth": self.c3_growth,
+            "c3_max": self.c3_max,
+            "step_size": self.step_size,
+            "max_iterations": self.max_iterations,
+            "crossing_tolerance": self.crossing_tolerance,
             "batch_size": self.batch_size,
         }
-        config.update(dict(overrides or {}))
+        overrides = dict(overrides or {})
+        unknown = sorted(set(overrides) - set(config))
+        if unknown:
+            raise ValueError(
+                "unknown defense_config keys for MemGuardDefense (this API has no "
+                "entropy-target parameters): " + ", ".join(unknown)
+            )
+        config.update(overrides)
+        config["surrogate_hidden_dims"] = [
+            int(width) for width in config["surrogate_hidden_dims"]
+        ]
         for key in (
-            "confidence_floor",
-            "entropy_quantile",
-            "entropy_percentile_of_max",
+            "surrogate_epochs",
+            "surrogate_batch_size",
+            "surrogate_seed",
+            "surrogate_restarts",
+            "max_iterations",
+            "batch_size",
+        ):
+            config[key] = int(config[key])
+        for key in (
+            "surrogate_learning_rate",
+            "c1",
+            "c2",
+            "c3_init",
+            "c3_growth",
+            "c3_max",
+            "step_size",
+            "crossing_tolerance",
         ):
             config[key] = float(config[key])
-        for key in ("bisection_iterations", "batch_size"):
-            config[key] = int(config[key])
-        if config["entropy_target"] is not None:
-            config["entropy_target"] = float(config["entropy_target"])
-        if not 0.0 < config["confidence_floor"] < 1.0:
-            raise ValueError("confidence_floor must lie strictly between 0 and 1.")
-        if not 0.0 <= config["entropy_quantile"] <= 1.0:
-            raise ValueError("entropy_quantile must lie in [0, 1].")
-        if not 0.0 <= config["entropy_percentile_of_max"] <= 1.0:
-            raise ValueError("entropy_percentile_of_max must lie in [0, 1].")
-        if config["bisection_iterations"] <= 0 or config["batch_size"] <= 0:
-            raise ValueError("bisection_iterations and batch_size must be positive.")
+        if not config["surrogate_hidden_dims"] or any(
+            width <= 0 for width in config["surrogate_hidden_dims"]
+        ):
+            raise ValueError("surrogate_hidden_dims must be non-empty and positive.")
+        for key in (
+            "surrogate_epochs",
+            "surrogate_batch_size",
+            "surrogate_restarts",
+            "max_iterations",
+            "batch_size",
+        ):
+            if config[key] <= 0:
+                raise ValueError(f"{key} must be positive.")
+        if config["surrogate_learning_rate"] <= 0.0:
+            raise ValueError("surrogate_learning_rate must be positive.")
+        if config["c1"] < 0.0 or config["c2"] < 0.0 or config["c3_init"] <= 0.0:
+            raise ValueError("c1/c2 must be non-negative and c3_init positive.")
+        if config["c3_growth"] <= 1.0:
+            raise ValueError("c3_growth must exceed 1.")
+        if config["c3_max"] < config["c3_init"]:
+            raise ValueError("c3_max must be at least c3_init.")
+        if config["step_size"] <= 0.0:
+            raise ValueError("step_size must be positive.")
+        if config["crossing_tolerance"] < 0.0:
+            raise ValueError("crossing_tolerance must be non-negative.")
         return config
 
-    def _set_entropy_target(self, value: float, source: str) -> None:
-        self._entropy_target = float(value)
-        self._entropy_target_source = source
+    @staticmethod
+    def _solver_config(config: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            key: config[key]
+            for key in (
+                "c1",
+                "c2",
+                "c3_init",
+                "c3_growth",
+                "c3_max",
+                "step_size",
+                "max_iterations",
+                "crossing_tolerance",
+            )
+        }
 
-    def _resolved_entropy_target(self, num_classes: int, config: Dict[str, Any]) -> float:
-        """Entropy target for ad-hoc perturbations, lazily resolved and clipped."""
-        if self._entropy_target is None:
-            if config["entropy_target"] is not None:
-                self._set_entropy_target(float(config["entropy_target"]), "explicit")
-            else:
-                cap = max_entropy_at_floor(num_classes, config["confidence_floor"])
-                self._set_entropy_target(
-                    config["entropy_percentile_of_max"] * cap, "percentile_of_max"
+    def _posteriors_from(
+        self, precomputed: Any, sources: Sequence[Any], key: str
+    ) -> Optional[torch.Tensor]:
+        """Posteriors from `precomputed`, or by running the model on `sources`."""
+        if precomputed is not None:
+            probs = torch.as_tensor(precomputed, dtype=torch.float32).detach()
+            if probs.ndim != 2:
+                raise ValueError(f"auxiliary_data[{key!r}] must be 2-D.")
+            return probs
+        for source in sources:
+            if source is not None and self.defended_model is not None:
+                logits = predict_logits(
+                    self.defended_model,
+                    source,
+                    device=self.device,
+                    batch_size=self._effective_config["batch_size"],
                 )
-        cap = max_entropy_at_floor(num_classes, config["confidence_floor"])
-        return float(np.clip(self._entropy_target, 0.0, cap))
+                return torch.softmax(logits, dim=1)
+        return None
+
+    def _member_probabilities(self, defense_input: DefenseInput) -> Optional[torch.Tensor]:
+        auxiliary = defense_input.auxiliary_data or {}
+        return self._posteriors_from(
+            auxiliary.get("member_probabilities"),
+            (defense_input.train_data,),
+            "member_probabilities",
+        )
 
     def _nonmember_probabilities(self, defense_input: DefenseInput) -> Optional[torch.Tensor]:
         auxiliary = defense_input.auxiliary_data or {}
-        nonmember_probs = auxiliary.get("nonmember_probabilities")
-        if nonmember_probs is not None:
-            probs = torch.as_tensor(nonmember_probs, dtype=torch.float32).detach()
-            if probs.ndim != 2:
-                raise ValueError("auxiliary_data['nonmember_probabilities'] must be 2-D.")
-            return probs
-        nonmember_data = auxiliary.get("nonmember_data")
-        if nonmember_data is not None and self.defended_model is not None:
-            logits = predict_logits(
-                self.defended_model,
-                nonmember_data,
-                device=self.device,
-                batch_size=self._effective_config["batch_size"],
-            )
-            return torch.softmax(logits, dim=1)
-        return None
+        return self._posteriors_from(
+            auxiliary.get("nonmember_probabilities"),
+            (auxiliary.get("nonmember_data"), defense_input.test_data),
+            "nonmember_probabilities",
+        )
 
     def _input_probabilities(self, defense_input: DefenseInput) -> torch.Tensor:
         signals = defense_input.signals or {}
@@ -621,28 +1004,12 @@ class MemGuardDefense(BaseDefense):
             probs = torch.softmax(logits, dim=1)
         else:
             raise ValueError(
-                "MemGuardDefense requires target_model plus samples, or "
-                "signals['probabilities'] / signals['logits']."
+                "MemGuardDefense requires posteriors to protect: target_model plus "
+                "samples, or signals['probabilities'] / signals['logits']."
             )
         if probs.ndim != 2 or probs.shape[1] < 2:
             raise ValueError("MemGuard requires posteriors of shape (batch, classes >= 2).")
         return probs
-
-    def _frozen_perturb(self, num_classes: int) -> Any:
-        """Perturbation callable with the resolved parameters baked in."""
-        floor = self._effective_config["confidence_floor"]
-        target = self._resolved_entropy_target(num_classes, self._effective_config)
-        iterations = self._effective_config["bisection_iterations"]
-
-        def perturb(probabilities: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
-            return perturb_probabilities(
-                probabilities,
-                confidence_floor=floor,
-                entropy_target=target,
-                bisection_iterations=iterations,
-            )
-
-        return perturb
 
     def _split_by_membership(
         self,
@@ -752,10 +1119,8 @@ class MemGuardDefense(BaseDefense):
 
 __all__ = [
     "MemGuardDefense",
-    "confidence_for_entropy",
-    "entropy_at_confidence",
     "entropy_of_probabilities",
-    "max_entropy_at_floor",
-    "perturb_probabilities",
+    "perturb_posteriors",
+    "train_surrogate_attack_model",
     "tpr_at_fpr",
 ]
