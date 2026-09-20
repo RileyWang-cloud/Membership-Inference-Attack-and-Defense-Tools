@@ -110,15 +110,23 @@ All classes subclass `BaseDefense` and consume `DefenseInput` to produce
 | `HAMPDefense` | [hamp.py](Defense/hamp.py) | high-entropy training and rank-preserving output modification, hybrid | [hamp_demo.py](Defense/hamp_demo.py) |
 | `EarlyStopDefense` | [early_stop.py](Defense/early_stop.py) | validation-monitored or fixed-epoch early stopping, training-time | [early_stop_demo.py](Defense/early_stop_demo.py) |
 | `AdvRegDefense` | [adv_reg.py](Defense/adv_reg.py) | adversarial membership regularization, training-time | [adv_reg_demo.py](Defense/adv_reg_demo.py) |
+| `MemGuardDefense` | [memguard.py](Defense/memguard.py) | inference-time posterior perturbation onto a calibrated entropy target (CCS 2019) | [memguard_demo.py](Defense/memguard_demo.py) |
 | `PopularityRandomizationDefense`, `RecommendationListShuffleDefense` | [rec_privacy_defenses.py](Defense/rec_privacy_defenses.py) | recommender output-processing | [rec_privacy_defense_demo.py](Defense/rec_privacy_defense_demo.py) |
 
-The four classifier defenses above accept PyTorch models returning a logits
+The classifier defenses above accept PyTorch models returning a logits
 tensor, a tuple whose first item is logits, or a mapping with a `logits` item.
 `AdvRegDefense` additionally requires a disjoint pseudo-non-member set in
 `auxiliary_data`; `HAMPDefense` accepts a dataset-specific random non-member
 generator there. `EarlyStopDefense` uses validation monitoring by default and
 supports the fixed-checkpoint protocol from the reference evaluation through
-`defense_config={"stop_epoch": ...}`.
+`defense_config={"stop_epoch": ...}`. `MemGuardDefense` is inference-time: it
+keeps the model unchanged and maps every released posterior onto the canonical
+`[c, (1-c)/(K-1), ...]` form whose entropy matches a target calibrated from
+non-member posteriors (`auxiliary_data['nonmember_data']`). This preserves
+argmax predictions exactly, drives entropy attacks to ~random AUROC, and
+strongly suppresses confidence/loss attacks; the residual signal is bounded
+by the correctness channel that argmax preservation inherently leaves open.
+It also accepts precomputed `signals['probabilities']` / `signals['logits']`.
 
 ## Quick Start
 
@@ -137,6 +145,7 @@ python Defense/relax_loss_demo.py
 python Defense/hamp_demo.py
 python Defense/early_stop_demo.py
 python Defense/adv_reg_demo.py
+python Defense/memguard_demo.py
 ```
 
 Dependencies: PyTorch, scikit-learn, NumPy. The metric-based and shadow-free
