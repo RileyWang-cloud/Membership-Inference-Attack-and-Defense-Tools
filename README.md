@@ -74,6 +74,7 @@ All classes subclass `BaseAttack` and consume `AttackInput` to produce
 | `MEMIAAttack` | [me_mia.py](Attack/me_mia.py) | classifier on per-user score features | [rec_mia_demo.py](Attack/rec_mia_demo.py) |
 | `CompareMIAAttack` | [compare_mia.py](Attack/compare_mia.py) | target-surrogate NDCG discrepancy features, recommender | [rec_mia_demo.py](Attack/rec_mia_demo.py) |
 | `ShadowFreeMIAAttack` | [shadow_free_mia.py](Attack/shadow_free_mia.py) | embedding similarity, no shadow / no target query | [shadow_free_mia_demo.py](Attack/shadow_free_mia_demo.py) |
+| `EncoderMIAttack` | [encodermi_attack.py](Attack/encodermi_attack.py) | augmentation-consistency vectors on contrastive encoders | [encodermi_attack_demo.py](Attack/encodermi_attack_demo.py) |
 | `TransferAttack`, `BoundaryAttack` | [transfer_attack.py](Attack/transfer_attack.py) | transfer and decision-boundary | [transfer_boundary_demo.py](Attack/transfer_boundary_demo.py) |
 
 ## Recommender Summary
@@ -139,6 +140,7 @@ python Attack/qmia_demo.py
 python Attack/gan_leaks_demo.py
 python Attack/enhanced_mia_demo.py
 python Attack/shadow_free_mia_demo.py
+python Attack/encodermi_attack_demo.py
 python Attack/rec_mia_demo.py --method compare
 python Defense/vae_dp_demo.py
 python Defense/relax_loss_demo.py
