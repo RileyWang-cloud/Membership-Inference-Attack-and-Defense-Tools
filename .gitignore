@@ -234,3 +234,6 @@ Attack/utils_dl_mia/**/vocab_file/
 *.p
 *.pickle
 Ref/
+
+# ZCode agent session artifacts (plans, local session state) - private
+.zcode/

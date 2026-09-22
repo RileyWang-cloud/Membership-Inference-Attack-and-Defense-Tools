@@ -106,6 +106,7 @@ All classes subclass `BaseDefense` and consume `DefenseInput` to produce
 | Class | File | Family | Demo |
 |---|---|---|---|
 | `DPSGDDefense` | [dp_sgd.py](Defense/dp_sgd.py) | DP-SGD for PyTorch classifiers, training-time | [dp_sgd_demo.py](Defense/dp_sgd_demo.py) |
+| `LabelSmoothingDefense` | [label_smoothing.py](Defense/label_smoothing.py) | training-time label smoothing regularization for classifiers | [label_smoothing_demo.py](Defense/label_smoothing_demo.py) |
 | `VAEDPDefense` | [vae_dp.py](Defense/vae_dp.py) | DP-SGD-trained VAE against reconstruction MIA | [vae_dp_demo.py](Defense/vae_dp_demo.py) |
 | `RelaxLossDefense` | [relax_loss.py](Defense/relax_loss.py) | alternating loss relaxation and posterior flattening, training-time | [relax_loss_demo.py](Defense/relax_loss_demo.py) |
 | `HAMPDefense` | [hamp.py](Defense/hamp.py) | high-entropy training and rank-preserving output modification, hybrid | [hamp_demo.py](Defense/hamp_demo.py) |

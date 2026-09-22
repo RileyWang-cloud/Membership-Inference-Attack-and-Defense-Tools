@@ -122,7 +122,7 @@ class LossAttack(BaseAttack):
     def infer(self, attack_input: AttackInput) -> AttackOutput:
         logits = _get_logits(attack_input, self.device, self.batch_size)
         labels = _to_tensor_1d(attack_input.labels, dtype=torch.long)
-        losses = F.cross_entropy(logits, labels.to(self.device), reduction="none")
+        losses = F.cross_entropy(logits, labels.to(logits.device), reduction="none")
         scores = (-losses).detach().cpu().numpy().astype(np.float64)
         preds = (scores >= 0.5).astype(np.int64)
         return AttackOutput(
@@ -147,7 +147,7 @@ class CorrectnessAttack(BaseAttack):
         logits = _get_logits(attack_input, self.device, self.batch_size)
         labels = _to_tensor_1d(attack_input.labels, dtype=torch.long)
         predictions = logits.argmax(dim=1)
-        correct = (predictions == labels.to(self.device)).float()
+        correct = (predictions == labels.to(predictions.device)).float()
         scores = correct.detach().cpu().numpy().astype(np.float64)
         return AttackOutput(
             membership_scores=scores, membership_preds=scores.astype(np.int64),
@@ -186,7 +186,7 @@ class ConfidenceAttack(BaseAttack):
         probs = _get_probabilities(attack_input, self.device, self.batch_size)
         labs = _to_numpy_1d(attack_input.labels).astype(np.int64)
         n = probs.shape[0]
-        confidences = probs[torch.arange(n), torch.as_tensor(labs).to(self.device)].detach().cpu().numpy()
+        confidences = probs[torch.arange(n), torch.as_tensor(labs).to(probs.device)].detach().cpu().numpy()
 
         if self._thresholds:
             scores = np.zeros(n, dtype=np.float64)
