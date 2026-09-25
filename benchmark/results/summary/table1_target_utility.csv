@@ -1,0 +1,4 @@
+dataset,seeds,clean_test_acc(mean±std)
+mnist,3,0.9882±0.0009
+purchase,3,0.6838±0.0148
+texas,3,0.3612±0.0142

@@ -1,0 +1,282 @@
+[
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "LossAttack",
+  "family": "Metric",
+  "attack_seed": 190,
+  "auroc": 0.8907519031141868,
+  "accuracy": 0.7355882352941177,
+  "mu_m": -0.0013243158478654503,
+  "mu_nm": -12.611773974436606,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.022941176470588236,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.02,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "CorrectnessAttack",
+  "family": "Metric",
+  "attack_seed": 190,
+  "auroc": 0.8220588235294117,
+  "accuracy": 0.8220588235294117,
+  "mu_m": 1.0,
+  "mu_nm": 0.29444444444444445,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.01,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "ConfidenceAttack",
+  "family": "Metric",
+  "attack_seed": 190,
+  "auroc": 0.8908057093425604,
+  "accuracy": 0.8335294117647059,
+  "mu_m": 0.9986806159218152,
+  "mu_nm": 0.2881996089354148,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.01,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "EntropyAttack",
+  "family": "Metric",
+  "attack_seed": 190,
+  "auroc": 0.8401460207612458,
+  "accuracy": 0.7355882352941177,
+  "mu_m": -0.010410783580460018,
+  "mu_nm": -0.46663794259296854,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.020588235294117647,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.01,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "ModifiedEntropyAttack",
+  "family": "Metric",
+  "attack_seed": 190,
+  "auroc": 0.8907813148788928,
+  "accuracy": 0.8335294117647059,
+  "mu_m": -0.008746569504204013,
+  "mu_nm": -4.713309265029045,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.01,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "ShadowBasedAttack",
+  "family": "Classifier",
+  "attack_seed": 190,
+  "auroc": 0.8575496539792387,
+  "accuracy": 0.8258823529411765,
+  "mu_m": 0.5900046936008665,
+  "mu_nm": 0.43525066539645196,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.05058823529411765,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 7.97,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "LiRAAttack",
+  "family": "Reference",
+  "attack_seed": 190,
+  "auroc": 0.8455167820069204,
+  "accuracy": 0.755,
+  "mu_m": 3.427959160431142,
+  "mu_nm": 0.039240069372772274,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.01,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "RMIAAttack",
+  "family": "Reference",
+  "attack_seed": 190,
+  "auroc": 0.9063261245674741,
+  "accuracy": 0.6817647058823529,
+  "mu_m": 0.45808095238095237,
+  "mu_nm": 0.274868253968254,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.01,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "QMIAAttack",
+  "family": "Quantile",
+  "attack_seed": 190,
+  "auroc": 0.8261750865051902,
+  "accuracy": 0.7008823529411765,
+  "mu_m": -26.284287954966228,
+  "mu_nm": -44.78278970294529,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.03,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 0.88,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "texas",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "RAPIDAttack",
+  "family": "Reference",
+  "attack_seed": 190,
+  "auroc": 0.9269230103806229,
+  "accuracy": 0.8632352941176471,
+  "mu_m": 0.8551573989126418,
+  "mu_nm": 0.1583703843346975,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.24176470588235294,
+  "tpr_at_0_1pct_fpr": null,
+  "tpr_at_0pct_fpr": null,
+  "member_count": 1700,
+  "nonmember_count": 1700,
+  "attack_seconds": 3.14,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.2,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ }
+]

@@ -1,0 +1,44 @@
+{
+ "history": [
+  {
+   "epoch": 0,
+   "train_loss": 0.2846936741709709,
+   "train_acc": 0.9129,
+   "seconds": 0.78,
+   "val_acc": 0.968,
+   "val_loss": 0.11390461903443952
+  },
+  {
+   "epoch": 1,
+   "train_loss": 0.06301676357984543,
+   "train_acc": 0.98055,
+   "seconds": 0.46,
+   "val_acc": 0.9788,
+   "val_loss": 0.0714627363867847
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.03483080507367849,
+   "train_acc": 0.98925,
+   "seconds": 0.46,
+   "val_acc": 0.9788,
+   "val_loss": 0.07234129748235696
+  }
+ ],
+ "metrics": {
+  "train_acc": 0.98925,
+  "val_acc": 0.9788,
+  "member_eval_acc": 0.9928,
+  "nonmember_acc": 0.9813,
+  "train_seconds": 2.0,
+  "epochs_run": 3
+ },
+ "config": {
+  "arch": "mnist_cnn",
+  "optimizer": "Adam",
+  "lr": 0.001,
+  "batch_size": 128,
+  "epochs": 30
+ },
+ "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8"
+}

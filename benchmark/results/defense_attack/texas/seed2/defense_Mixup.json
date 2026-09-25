@@ -1,0 +1,20 @@
+{
+ "dataset": "texas",
+ "seed": 2,
+ "defense": "Mixup",
+ "defended_member_eval_acc": 1.0,
+ "defended_nonmember_acc": 0.45705882352941174,
+ "deviation": [],
+ "defense_seconds": 5.8,
+ "recipe": {
+  "optimizer": "adam",
+  "learning_rate": 0.001,
+  "momentum": 0.0,
+  "weight_decay": 0.0,
+  "batch_size": 128,
+  "epochs": 50,
+  "milestones": [],
+  "gamma": 0.1
+ },
+ "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8"
+}

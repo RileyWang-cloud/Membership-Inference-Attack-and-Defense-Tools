@@ -237,3 +237,9 @@ Ref/
 
 # ZCode agent session artifacts (plans, local session state) - private
 .zcode/
+
+# --- benchmark (3090 side) heavy artifacts ---
+benchmark/data/
+benchmark/cache/
+benchmark/checkpoints/
+benchmark/bundles/

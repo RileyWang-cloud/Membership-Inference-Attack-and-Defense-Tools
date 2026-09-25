@@ -1,0 +1,20 @@
+{
+ "dataset": "mnist",
+ "seed": 0,
+ "defense": "RelaxLoss",
+ "defended_member_eval_acc": 0.9299,
+ "defended_nonmember_acc": 0.9273,
+ "deviation": [],
+ "defense_seconds": 17.7,
+ "recipe": {
+  "optimizer": "adam",
+  "learning_rate": 0.001,
+  "momentum": 0.0,
+  "weight_decay": 0.0,
+  "batch_size": 128,
+  "epochs": 30,
+  "milestones": [],
+  "gamma": 0.1
+ },
+ "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8"
+}

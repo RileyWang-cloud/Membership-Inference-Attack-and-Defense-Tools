@@ -1,0 +1,55 @@
+benchmark:
+  seeds: [0, 1, 2]
+
+data:
+  dataset: texas
+  num_classes: 100
+  input_dim: 6169
+  splits:
+    target_train: 3500
+    target_val: 800
+    shadow_train: 1800
+    shadow_test: 1800
+    auxiliary: 900
+    target_member_eval: 1700   # ⊂ target_train
+    target_nonmember: 1700
+
+reference:
+  pool_from: [shadow_train, shadow_test, auxiliary]  # 4,500
+  subset_ratio: 0.5          # 每个 ref 训练 2,250
+  num_models: 4
+
+population:
+  from: reference_pool
+  size: 350
+
+rmia:
+  gamma: 2
+  offline_a: 0.2             # 论文表格值（Purchase-100）
+  confidence: softmax
+
+shadow:
+  architecture: same_as_target
+
+attack:
+  attacks: [LossAttack, CorrectnessAttack, ConfidenceAttack, EntropyAttack, ModifiedEntropyAttack, ShadowBasedAttack, LiRAAttack, RMIAAttack, QMIAAttack, RAPIDAttack]
+  accuracy_threshold: shadow_calibrated
+
+model:
+  arch: mlp_512_256_128_64
+  optimizer: Adam
+  lr: 0.001
+  batch_size: 128
+  epochs: 50
+  weight_decay: 0
+
+defense:
+  methods: [DPSGD, RelaxLoss, HAMP, EarlyStop, AdvReg, MemGuard, Mixup, LabelSmoothing]
+  dp_sgd_on_cifar: groupnorm_variant
+
+defense_attacks: [LossAttack, ShadowBasedAttack, LiRAAttack, RMIAAttack]
+defense_attacks_optional: [QMIAAttack]
+
+metrics:
+  utility: [accuracy]
+  privacy: [auroc, attack_accuracy, tpr_at_1pct_fpr]
