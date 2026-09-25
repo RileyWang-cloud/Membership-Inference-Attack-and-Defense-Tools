@@ -142,7 +142,10 @@ class QMIAAttack(BaseAttack):
         fit_X_t = _to_tensor_2d(fit_X).to(self.device)
         fit_y_t = _to_tensor_1d(fit_y, torch.long).to(self.device)
 
-        input_dim = int(fit_X_t.shape[1])
+        # quantile head consumes flattened feature vectors (images included);
+        # fit_X_t itself stays in native shape for the target model forward
+        fit_X_flat = fit_X_t.reshape(fit_X_t.shape[0], -1)
+        input_dim = int(fit_X_flat.shape[1])
         net = _QuantileNet(input_dim, self.hidden_dims, len(self.quantile_levels)).to(self.device)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         levels = self.quantile_levels.to(self.device)
@@ -154,7 +157,7 @@ class QMIAAttack(BaseAttack):
             perm = idx[torch.randperm(n, device=self.device)]
             for start in range(0, n, batch_size):
                 batch_idx = perm[start : start + batch_size]
-                xb = fit_X_t[batch_idx]  # (B, d)  -- clean input to the net
+                xb = fit_X_flat[batch_idx]  # (B, d)  -- clean input to the net
                 tb = aug_margins[batch_idx]  # (B, A)
                 pred = net(xb)  # (B, K)
                 loss = _pinball_loss(pred, tb, levels)
@@ -237,7 +240,9 @@ class QMIAAttack(BaseAttack):
         clean_margin = _margin_scores(target_model, X_t, y_t, batch_size, self.device)
         net.eval()
         with torch.no_grad():
-            pred = _rearrange_quantiles(net(X_t).cpu(), self.quantile_levels)
+            pred = _rearrange_quantiles(
+                net(X_t.reshape(X_t.shape[0], -1)).cpu(), self.quantile_levels
+            )
         k_op = int(torch.argmin(torch.abs(self.quantile_levels - operating_quantile)).item())
         scores = clean_margin - pred[:, k_op].numpy()
         return scores, clean_margin, pred, k_op
@@ -390,7 +395,8 @@ def _require_fit_data(attack_input: AttackInput) -> Tuple[Any, Any]:
 
 def _to_tensor_2d(value: Any) -> torch.Tensor:
     t = value.detach().cpu() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
-    return t.float().reshape(t.shape[0], -1) if t.ndim > 2 else t.float()
+    # Keep image batches 4D (N,C,H,W): flattening breaks convolutional targets.
+    return t.float()
 
 
 def _to_tensor_1d(value: Any, dtype: Optional[torch.dtype] = None) -> torch.Tensor:

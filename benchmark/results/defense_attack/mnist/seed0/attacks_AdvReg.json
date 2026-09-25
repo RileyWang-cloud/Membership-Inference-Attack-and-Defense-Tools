@@ -1,0 +1,142 @@
+[
+ {
+  "dataset": "mnist",
+  "seed": 0,
+  "defense": "AdvReg",
+  "attack": "LossAttack",
+  "family": "Metric",
+  "attack_seed": 90,
+  "auroc": 0.508973095,
+  "accuracy": 0.51295,
+  "mu_m": -3.562975562146029e-05,
+  "mu_nm": -0.10658565183476644,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": 0.0,
+  "tpr_at_0pct_fpr": 0.0,
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "attack_seconds": 0.03,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.3,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "mnist",
+  "seed": 0,
+  "defense": "AdvReg",
+  "attack": "ShadowBasedAttack",
+  "family": "Classifier",
+  "attack_seed": 90,
+  "auroc": 0.5162947800000001,
+  "accuracy": 0.51285,
+  "mu_m": 0.5071905546814204,
+  "mu_nm": 0.4905021343417153,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": 0.0,
+  "tpr_at_0pct_fpr": 0.0,
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "attack_seconds": 13.57,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.3,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "mnist",
+  "seed": 0,
+  "defense": "AdvReg",
+  "attack": "LiRAAttack",
+  "family": "Reference",
+  "attack_seed": 90,
+  "auroc": 0.52781376,
+  "accuracy": 0.5154,
+  "mu_m": -0.11685781864366458,
+  "mu_nm": -0.4384151159728219,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": 0.0,
+  "tpr_at_0pct_fpr": 0.0,
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "attack_seconds": 0.02,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.3,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "mnist",
+  "seed": 0,
+  "defense": "AdvReg",
+  "attack": "RMIAAttack",
+  "family": "Reference",
+  "attack_seed": 90,
+  "auroc": 0.51678158,
+  "accuracy": 0.50555,
+  "mu_m": 0.010339879999999997,
+  "mu_nm": 0.009517159999999998,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0192,
+  "tpr_at_0_1pct_fpr": 0.0054,
+  "tpr_at_0pct_fpr": 0.0,
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "attack_seconds": 0.23,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.3,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ },
+ {
+  "dataset": "mnist",
+  "seed": 0,
+  "defense": "AdvReg",
+  "attack": "QMIAAttack",
+  "family": "Quantile",
+  "attack_seed": 90,
+  "auroc": 0.52121785,
+  "accuracy": 0.4845,
+  "mu_m": -20.280813400554656,
+  "mu_nm": -18.009297458839416,
+  "degenerate": false,
+  "tpr_at_1pct_fpr": 0.0116,
+  "tpr_at_0_1pct_fpr": 0.0014,
+  "tpr_at_0pct_fpr": 0.0001,
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "attack_seconds": 3.59,
+  "git_commit": "0f3e83e51a27def4133a114a27f85166c75eb7a8",
+  "params": {
+   "rmia": {
+    "gamma": 2,
+    "offline_a": 0.3,
+    "confidence": "softmax"
+   },
+   "lira_variant": "offline_out_gaussian_zscore"
+  }
+ }
+]

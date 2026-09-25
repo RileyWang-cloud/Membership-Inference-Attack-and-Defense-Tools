@@ -1,0 +1,10 @@
+torch>=2.4
+torchvision>=0.19
+numpy>=1.26
+scikit-learn>=1.4
+scipy>=1.11
+pandas>=2.0
+pyyaml>=6.0
+tqdm>=4.66
+# 可选（仅 CIFAR DP-SGD 的 ε 会计与加速备选，方案 §10.4 / W15）
+# opacus>=1.5

@@ -1,0 +1,5 @@
+dataset,seeds,clean_test_acc
+purchase,3,0.6838±0.0148
+texas,3,0.3612±0.0142
+mnist,3,0.9882±0.0009
+cifar10,3,0.6577±0.0343

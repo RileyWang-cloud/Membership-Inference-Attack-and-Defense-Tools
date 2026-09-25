@@ -1,0 +1,58 @@
+benchmark:
+  seeds: [0, 1, 2]
+
+data:
+  dataset: cifar10
+  num_classes: 10
+  shape: [3, 32, 32]
+  splits:
+    target_train: 20000
+    target_val: 5000
+    shadow_train: 10000
+    shadow_test: 10000
+    auxiliary: 5000
+    target_member_eval: 10000   # ⊂ target_train
+    target_nonmember: 10000     # 官方测试集
+  reserve: 0
+
+reference:
+  pool_from: [shadow_train, shadow_test, auxiliary]  # 25,000
+  subset_ratio: 0.5          # 每个 ref 训练 12,500
+  num_models: 4
+
+population:
+  from: reference_pool
+  size: 2500
+
+rmia:
+  gamma: 2
+  offline_a: 0.3             # 论文 CIFAR-10 值
+  confidence: softmax
+
+shadow:
+  architecture: same_as_target
+
+attack:
+  attacks: [LossAttack, CorrectnessAttack, ConfidenceAttack, EntropyAttack, ModifiedEntropyAttack, ShadowBasedAttack, LiRAAttack, RMIAAttack, QMIAAttack, RAPIDAttack]
+  accuracy_threshold: shadow_calibrated
+
+model:
+  arch: resnet18_cifar
+  optimizer: SGD
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 0.0005
+  batch_size: 128
+  epochs: 100
+  scheduler: {name: MultiStepLR, milestones: [50, 75], gamma: 0.1}
+
+defense:
+  methods: [DPSGD, RelaxLoss, HAMP, EarlyStop, AdvReg, MemGuard, Mixup, LabelSmoothing]
+  dp_sgd_on_cifar: groupnorm_variant
+
+defense_attacks: [LossAttack, ShadowBasedAttack, LiRAAttack, RMIAAttack]
+defense_attacks_optional: [QMIAAttack]
+
+metrics:
+  utility: [accuracy]
+  privacy: [auroc, attack_accuracy, tpr_at_1pct_fpr, tpr_at_0_1pct_fpr, tpr_at_0pct_fpr]
