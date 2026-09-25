@@ -1,0 +1,28 @@
+{
+  "seed": 0,
+  "defense": "D04_EarlyStop",
+  "deviation": "patience-based early stopping on target_val (val_loss, patience=10) instead of full 100 epochs",
+  "test_acc": 0.6894999742507935,
+  "partition_acc": {
+    "target_member_eval_acc": 0.7972999811172485,
+    "target_nonmember_acc": 0.6894999742507935,
+    "target_val_acc": 0.6926000118255615,
+    "shadow_train_acc": 0.6915000081062317,
+    "shadow_test_acc": 0.6916000247001648,
+    "auxiliary_acc": 0.6880000233650208,
+    "rmia_population_acc": 0.6764000058174133,
+    "test_acc": 0.6894999742507935
+  },
+  "defense_seconds": 48.00803089141846,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  },
+  "selected_epoch": 8,
+  "stopped_epoch": 18,
+  "stop_reason": "validation_patience"
+}

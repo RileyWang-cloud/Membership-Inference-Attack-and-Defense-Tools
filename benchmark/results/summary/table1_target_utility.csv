@@ -1,0 +1,2 @@
+clean_acc_mean,clean_acc_std,dataset,model,seeds
+0.6577000021934509,0.03430915829978074,cifar10,resnet18_cifar,3

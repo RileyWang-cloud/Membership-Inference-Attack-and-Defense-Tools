@@ -1,0 +1,25 @@
+{
+  "seed": 1,
+  "defense": "D02_RelaxLoss",
+  "deviation": "none (relax-loss alternation is algorithm-required)",
+  "test_acc": 0.7689999938011169,
+  "partition_acc": {
+    "target_member_eval_acc": 0.8532000184059143,
+    "target_nonmember_acc": 0.7689999938011169,
+    "target_val_acc": 0.772599995136261,
+    "shadow_train_acc": 0.77920001745224,
+    "shadow_test_acc": 0.7681999802589417,
+    "auxiliary_acc": 0.7645999789237976,
+    "rmia_population_acc": 0.7667999863624573,
+    "test_acc": 0.7689999938011169
+  },
+  "defense_seconds": 239.89176750183105,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "seed": 1,
+  "defense": "D01_DP_SGD",
+  "deviation": "GroupNorm(8) ResNet18 variant (plan §10.4); repo DP-SGD hard-codes Adam lr=1e-3 (no SGD option); per-sample autograd clipping, no privacy accounting (report C=1.0, sigma=1.0, delta=n/a)",
+  "test_acc": 0.46939998865127563,
+  "partition_acc": {
+    "target_member_eval_acc": 0.47780001163482666,
+    "target_nonmember_acc": 0.46939998865127563,
+    "target_val_acc": 0.4803999960422516,
+    "shadow_train_acc": 0.47110000252723694,
+    "shadow_test_acc": 0.4713999927043915,
+    "auxiliary_acc": 0.4480000138282776,
+    "rmia_population_acc": 0.46399998664855957,
+    "test_acc": 0.46939998865127563
+  },
+  "defense_seconds": 25648.041085720062,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}

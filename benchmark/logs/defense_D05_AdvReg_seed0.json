@@ -1,0 +1,25 @@
+{
+  "seed": 0,
+  "defense": "D05_AdvReg",
+  "deviation": "repo AdvReg has no LR scheduler (clean recipe uses MultiStepLR[50,75]); adversary sub-config at repo defaults",
+  "test_acc": 0.694100022315979,
+  "partition_acc": {
+    "target_member_eval_acc": 0.9336000084877014,
+    "target_nonmember_acc": 0.694100022315979,
+    "target_val_acc": 0.6916000247001648,
+    "shadow_train_acc": 0.7006999850273132,
+    "shadow_test_acc": 0.6974999904632568,
+    "auxiliary_acc": 0.7053999900817871,
+    "rmia_population_acc": 0.7020000219345093,
+    "test_acc": 0.694100022315979
+  },
+  "defense_seconds": 846.6785879135132,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}

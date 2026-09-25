@@ -1,0 +1,43 @@
+{
+  "seed": 0,
+  "train_seconds": 311.48894453048706,
+  "seconds_per_epoch": 3.1148894453048706,
+  "final_train_acc": 1.0,
+  "final_val_acc": 0.6178,
+  "test_acc": 0.6205000281333923,
+  "partition_acc": {
+    "target_member_eval_acc": 1.0,
+    "target_nonmember_acc": 0.6205000281333923,
+    "target_val_acc": 0.6177999973297119,
+    "shadow_train_acc": 0.6288999915122986,
+    "shadow_test_acc": 0.625,
+    "auxiliary_acc": 0.6248000264167786,
+    "rmia_population_acc": 0.618399977684021,
+    "test_acc": 0.6205000281333923
+  },
+  "recipe": {
+    "optimizer": "sgd",
+    "lr": 0.1,
+    "momentum": 0.9,
+    "weight_decay": 0.0005,
+    "batch_size": 128,
+    "epochs": 100,
+    "scheduler": {
+      "name": "MultiStepLR",
+      "milestones": [
+        50,
+        75
+      ],
+      "gamma": 0.1
+    },
+    "augmentation": "none",
+    "precision": "fp32"
+  },
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}

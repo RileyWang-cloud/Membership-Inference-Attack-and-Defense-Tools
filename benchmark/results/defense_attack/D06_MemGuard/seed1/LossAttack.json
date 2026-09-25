@@ -1,0 +1,32 @@
+{
+  "dataset": "cifar10",
+  "model": "resnet18_cifar",
+  "seed": 1,
+  "defense": "D06_MemGuard",
+  "attack": "LossAttack",
+  "family": "metric",
+  "rmia_config": {
+    "gamma": 2.0,
+    "offline_a": 0.3
+  },
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "auroc": 0.6844282850000001,
+  "tpr_at_1pct_fpr": 0.0,
+  "tpr_at_0_1pct_fpr": 0.0,
+  "tpr_at_0pct_fpr": 0.0,
+  "attack_accuracy": 0.64725,
+  "stage": "reattack",
+  "threat_model": "non-adaptive (attack-side resources shared with clean)",
+  "deviation": "inference-time defense: wraps the clean target checkpoint; surrogate + noise use Shadow Bundle posteriors only",
+  "attack_seconds": 0.025066375732421875,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  },
+  "protocol": "plan v2 (2026-09) §12/§14.1; 4090 side"
+}

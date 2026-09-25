@@ -1,0 +1,25 @@
+{
+  "seed": 2,
+  "defense": "D08_LabelSmoothing",
+  "deviation": "none (smoothing alpha=0.1 is algorithm-required)",
+  "test_acc": 0.7864999771118164,
+  "partition_acc": {
+    "target_member_eval_acc": 1.0,
+    "target_nonmember_acc": 0.7864999771118164,
+    "target_val_acc": 0.8015999794006348,
+    "shadow_train_acc": 0.7843999862670898,
+    "shadow_test_acc": 0.798799991607666,
+    "auxiliary_acc": 0.7937999963760376,
+    "rmia_population_acc": 0.7960000038146973,
+    "test_acc": 0.7864999771118164
+  },
+  "defense_seconds": 239.22482633590698,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}

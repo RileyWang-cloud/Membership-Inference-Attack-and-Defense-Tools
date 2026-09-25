@@ -392,10 +392,11 @@ def _safe_auroc(y_true: np.ndarray, y_score: np.ndarray) -> Optional[float]:
 
 
 def _tpr_at_fpr(y_true: np.ndarray, y_score: np.ndarray, fpr_threshold: float) -> float:
-    if len(np.unique(y_true)) < 2:
-        return 0.0
-    fpr, tpr, _ = roc_curve(y_true, y_score)
-    return float(tpr[int(np.argmin(np.abs(fpr - fpr_threshold)))])
+    """W5 (benchmark plan §14.1): unified to ``Attack/base.py`` semantics —
+    highest TPR achievable while FPR <= budget (not nearest-ROC-point)."""
+    from Attack.base import _tpr_at_fpr as _base_tpr_at_fpr
+
+    return _base_tpr_at_fpr(y_true, y_score, fpr_threshold)
 
 
 __all__ = [

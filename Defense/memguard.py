@@ -427,9 +427,6 @@ def perturb_posteriors(
 
     protected = torch.empty_like(best)
     protected.scatter_(1, sort_idx, best)
-    # Hand the result back on the caller's device so downstream .numpy()
-    # conversions work regardless of where the surrogate lives.
-    protected = protected.to(probabilities.device)
 
     stats = {
         "num_rows": int(num_rows),
@@ -452,6 +449,13 @@ def perturb_posteriors(
             (protected.argmax(dim=1) == probs.argmax(dim=1)).float().mean()
         ),
     }
+    # Hand the result back on the caller's device so downstream .numpy()
+    # conversions work regardless of where the surrogate lives.  This must
+    # happen AFTER the stats block: the stats above compare `protected` with
+    # the internal surrogate-device `probs`, so moving it to the caller's
+    # device first mixes devices whenever the caller's tensor is on the other
+    # side of the CPU/GPU line.
+    protected = protected.to(probabilities.device)
     return protected, stats
 
 

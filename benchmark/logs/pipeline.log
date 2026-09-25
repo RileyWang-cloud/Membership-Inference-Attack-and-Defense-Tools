@@ -1,0 +1,13 @@
+[2026-09-24 13:04:41] stage manifest done in 0.1 min
+[2026-09-24 13:20:26] stage target done in 15.7 min
+[2026-09-24 13:22:54] stage bundles FAILED after 148s
+[2026-09-24 13:25:47] stage manifest done in 0.1 min
+[2026-09-24 13:31:03] stage target done in 5.3 min
+[2026-09-24 13:40:14] stage manifest done in 0.1 min
+[2026-09-24 13:40:14] stage target done in 0.0 min
+[2026-09-24 14:24:36] stage bundles done in 44.4 min
+[2026-09-24 14:26:11] stage clean_attacks done in 1.6 min
+[2026-09-24 14:26:11] stage fairness done in 0.0 min
+[2026-09-25 14:06:16] stage defenses done in 1420.1 min
+[2026-09-25 14:48:54] stage reattack done in 42.6 min
+[2026-09-25 14:48:54] stage aggregate done in 0.0 min

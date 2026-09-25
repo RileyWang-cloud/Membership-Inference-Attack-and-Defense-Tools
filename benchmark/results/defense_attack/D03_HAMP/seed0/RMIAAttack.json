@@ -1,0 +1,32 @@
+{
+  "dataset": "cifar10",
+  "model": "resnet18_cifar",
+  "seed": 0,
+  "defense": "D03_HAMP",
+  "attack": "RMIAAttack",
+  "family": "reference",
+  "rmia_config": {
+    "gamma": 2.0,
+    "offline_a": 0.3
+  },
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "auroc": 0.58508056,
+  "tpr_at_1pct_fpr": 0.0356,
+  "tpr_at_0_1pct_fpr": 0.0031,
+  "tpr_at_0pct_fpr": 0.0002,
+  "attack_accuracy": 0.55995,
+  "stage": "reattack",
+  "threat_model": "non-adaptive (attack-side resources shared with clean)",
+  "deviation": "none (entropy penalty / output modification are algorithm-required)",
+  "attack_seconds": 0.771162748336792,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  },
+  "protocol": "plan v2 (2026-09) §12/§14.1; 4090 side"
+}

@@ -139,10 +139,10 @@ class QMIAAttack(BaseAttack):
         aug_margins = self._augmented_margins(
             target_model, fit_X, fit_y, n_augmentations, aug_noise, batch_size
         ).to(self.device)  # (M, A)
-        fit_X_t = _to_tensor_2d(fit_X).to(self.device)
+        fit_X_t = _to_model_input(fit_X).to(self.device)
         fit_y_t = _to_tensor_1d(fit_y, torch.long).to(self.device)
 
-        input_dim = int(fit_X_t.shape[1])
+        input_dim = int(np.prod(fit_X_t.shape[1:]))
         net = _QuantileNet(input_dim, self.hidden_dims, len(self.quantile_levels)).to(self.device)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         levels = self.quantile_levels.to(self.device)
@@ -189,7 +189,7 @@ class QMIAAttack(BaseAttack):
         batch_size = int(attack_input.config.get("batch_size", self.batch_size))
 
         target_model = _freeze(attack_input.target_model).to(self.device)
-        X_q = _to_tensor_2d(attack_input.samples).to(self.device)
+        X_q = _to_model_input(attack_input.samples).to(self.device)
         y_q = _to_tensor_1d(attack_input.labels, torch.long).to(self.device)
 
         scores, clean_margin, pred, k_op = self._score_samples(
@@ -279,7 +279,7 @@ class QMIAAttack(BaseAttack):
         Returns a CPU tensor of shape ``(M, A)`` where row ``i`` holds the
         margins of the ``A`` augmentations of sample ``i``.
         """
-        X = _to_tensor_2d(fit_X).to(self.device)
+        X = _to_model_input(fit_X).to(self.device)
         y = _to_tensor_1d(fit_y, torch.long).to(self.device)
         per_aug = [
             _margin_scores(
@@ -360,6 +360,8 @@ class _QuantileNet(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.ndim > 2:  # image inputs (N, C, H, W) -> flattened features
+            x = x.reshape(x.shape[0], -1)
         return self.net(x)
 
 
@@ -391,6 +393,17 @@ def _require_fit_data(attack_input: AttackInput) -> Tuple[Any, Any]:
 def _to_tensor_2d(value: Any) -> torch.Tensor:
     t = value.detach().cpu() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
     return t.float().reshape(t.shape[0], -1) if t.ndim > 2 else t.float()
+
+
+def _to_model_input(value: Any) -> torch.Tensor:
+    """Tensor in the shape the *target model* consumes.
+
+    Unlike ``_to_tensor_2d`` this preserves image layout ``(N, C, H, W)``;
+    flattening for the quantile head happens inside ``_QuantileNet.forward``
+    (benchmark fix W6: CIFAR-10 targets require 4-D inputs).
+    """
+    t = value.detach().cpu() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+    return t.float()
 
 
 def _to_tensor_1d(value: Any, dtype: Optional[torch.dtype] = None) -> torch.Tensor:

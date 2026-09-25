@@ -1,0 +1,25 @@
+{
+  "seed": 0,
+  "defense": "D03_HAMP",
+  "deviation": "none (entropy penalty / output modification are algorithm-required)",
+  "test_acc": 0.765500009059906,
+  "partition_acc": {
+    "target_member_eval_acc": 1.0,
+    "target_nonmember_acc": 0.765500009059906,
+    "target_val_acc": 0.7684000134468079,
+    "shadow_train_acc": 0.7634000182151794,
+    "shadow_test_acc": 0.7670999765396118,
+    "auxiliary_acc": 0.7717999815940857,
+    "rmia_population_acc": 0.7544000148773193,
+    "test_acc": 0.765500009059906
+  },
+  "defense_seconds": 263.9952380657196,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "seed": 2,
+  "checks": {
+    "manifest_is_single_source": {
+      "pass": true,
+      "detail": "/mnt/data/mia_benchmark_4090/repo/benchmark/splits/cifar10/seed2/manifest.json"
+    },
+    "member_eval_subset_of_target_train": {
+      "pass": true,
+      "detail": ""
+    },
+    "nonmember_is_official_test": {
+      "pass": true,
+      "detail": ""
+    },
+    "train_side_disjoint_complete": {
+      "pass": true,
+      "detail": ""
+    },
+    "pool_equals_shadow_train_test_aux": {
+      "pass": true,
+      "detail": ""
+    },
+    "derived_seeds_rule": {
+      "pass": true,
+      "detail": "shadow=250 refs=[200, 201, 202, 203]"
+    },
+    "ref_subsets_are_50pct": {
+      "pass": true,
+      "detail": "sizes=[12500, 12500, 12500, 12500]"
+    },
+    "ref_training_disjoint_from_target_train": {
+      "pass": true,
+      "detail": ""
+    },
+    "population_subset_of_pool": {
+      "pass": true,
+      "detail": ""
+    },
+    "population_disjoint_from_eval": {
+      "pass": true,
+      "detail": ""
+    },
+    "population_size": {
+      "pass": true,
+      "detail": "2500"
+    },
+    "rmia_config_fixed": {
+      "pass": true,
+      "detail": "gamma=2, offline_a=0.3, softmax (configs/cifar10_resnet18.yaml)"
+    },
+    "target_checkpoint_exists": {
+      "pass": true,
+      "detail": ""
+    },
+    "shadow_bundle_exists": {
+      "pass": true,
+      "detail": ""
+    },
+    "reference_bundle_exists": {
+      "pass": true,
+      "detail": ""
+    },
+    "eval_disjoint_from_pool": {
+      "pass": true,
+      "detail": ""
+    },
+    "defense_deviations_recorded": {
+      "pass": true,
+      "detail": "0 defense logs"
+    },
+    "memguard_shadow_only": {
+      "pass": true,
+      "detail": ""
+    },
+    "image_tpr_budgets": {
+      "pass": true,
+      "detail": "TPR@1%/0.1%/0% all reported (image dataset)"
+    },
+    "seed_convention": {
+      "pass": true,
+      "detail": "seed=2"
+    }
+  },
+  "all_pass": true,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "protocol": "plan v2 §21; 4090 side"
+}

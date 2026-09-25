@@ -1,0 +1,30 @@
+{
+  "seed": 0,
+  "defense": "D06_MemGuard",
+  "deviation": "inference-time defense: wraps the clean target checkpoint; surrogate + noise use Shadow Bundle posteriors only",
+  "test_acc": 0.6205000281333923,
+  "partition_acc": {
+    "target_member_eval_acc": 1.0,
+    "target_nonmember_acc": 0.6205000281333923,
+    "target_val_acc": 0.6177999973297119,
+    "shadow_train_acc": 0.6288999915122986,
+    "shadow_test_acc": 0.625,
+    "auxiliary_acc": 0.6248000264167786,
+    "rmia_population_acc": 0.618399977684021,
+    "test_acc": 0.6205000281333923
+  },
+  "defense_seconds": 869.0445017814636,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  },
+  "memguard_stats": {
+    "perturbed_fraction": 0.8637999892234802,
+    "argmax_preserved_fraction": 1.0,
+    "surrogate_train_accuracy": 0.7067499756813049
+  }
+}

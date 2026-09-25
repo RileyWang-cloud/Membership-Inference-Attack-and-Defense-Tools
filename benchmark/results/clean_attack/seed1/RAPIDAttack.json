@@ -1,0 +1,31 @@
+{
+  "dataset": "cifar10",
+  "model": "resnet18_cifar",
+  "seed": 1,
+  "defense": "clean",
+  "attack": "RAPIDAttack",
+  "family": "reference_augmentation",
+  "rmia_config": {
+    "gamma": 2.0,
+    "offline_a": 0.3
+  },
+  "member_count": 10000,
+  "nonmember_count": 10000,
+  "auroc": 0.8191169250000001,
+  "tpr_at_1pct_fpr": 0.1205,
+  "tpr_at_0_1pct_fpr": 0.028,
+  "tpr_at_0pct_fpr": 0.0057,
+  "attack_accuracy": 0.7307,
+  "stage": "clean",
+  "threat_model": "non-adaptive",
+  "attack_seconds": 10.444720029830933,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  },
+  "protocol": "plan v2 (2026-09) §8/§14.1; 4090 side"
+}

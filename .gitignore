@@ -234,3 +234,11 @@ Attack/utils_dl_mia/**/vocab_file/
 *.p
 *.pickle
 Ref/
+
+# 4090-side benchmark heavy artifacts (regenerable, not deliverables)
+benchmark/cache/
+benchmark/checkpoints/
+benchmark/bundles/
+benchmark/data/
+benchmark/benchmark/
+smoke_archive_260924/

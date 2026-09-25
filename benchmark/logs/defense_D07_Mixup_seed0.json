@@ -1,0 +1,25 @@
+{
+  "seed": 0,
+  "defense": "D07_Mixup",
+  "deviation": "none (mixup augmentation is algorithm-required)",
+  "test_acc": 0.7925999760627747,
+  "partition_acc": {
+    "target_member_eval_acc": 1.0,
+    "target_nonmember_acc": 0.7925999760627747,
+    "target_val_acc": 0.7907999753952026,
+    "shadow_train_acc": 0.7983999848365784,
+    "shadow_test_acc": 0.791700005531311,
+    "auxiliary_acc": 0.7940000295639038,
+    "rmia_population_acc": 0.7888000011444092,
+    "test_acc": 0.7925999760627747
+  },
+  "defense_seconds": 239.58420515060425,
+  "git_commit": "5befe0f85d9b3199e44898111969ddb33e72eb2a",
+  "versions": {
+    "python": "3.12.3",
+    "torch": "2.11.0+cu128",
+    "torchvision": "0.26.0+cu128",
+    "cuda": "12.8",
+    "cudnn": "91900"
+  }
+}
